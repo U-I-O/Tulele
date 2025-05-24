@@ -1,7 +1,7 @@
 // lib/profile_page.dart (新建)
 import 'package:flutter/material.dart';
 import 'notification_center_page.dart';
-import '../creator/creator_center_page.dart';
+import '../../../creator/presentation/pages/creator_center_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});

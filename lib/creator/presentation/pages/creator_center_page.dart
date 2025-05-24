@@ -1,7 +1,7 @@
 // lib/creator_center_page.dart (新建)
 import 'package:flutter/material.dart';
 import 'publish_plan_page.dart';
-import '../trips/my_published_plans_page.dart';
+import '../../../trips/presentation/pages/my_published_plans_page.dart';
 import 'creator_earnings_page.dart';
 
 class CreatorCenterPage extends StatefulWidget {

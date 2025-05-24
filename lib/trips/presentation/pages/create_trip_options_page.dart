@@ -1,6 +1,6 @@
 // lib/create_trip_options_page.dart (新建)
 import 'package:flutter/material.dart';
-import '../ai/ai_planner_page.dart'; // AI助手对话页面
+import '../../../ai/presentation/pages/ai_planner_page.dart'; // AI助手对话页面
 import 'create_trip_details_page.dart'; // 手动创建详情页面
 
 class CreateTripOptionsPage extends StatelessWidget {

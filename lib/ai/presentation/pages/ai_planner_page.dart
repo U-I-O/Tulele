@@ -1,6 +1,6 @@
 // lib/ai_planner_page.dart (新建)
 import 'package:flutter/material.dart';
-import '../trips/itinerary_editor_page.dart'; // 引入行程编辑页面
+import '../../../trips/presentation/pages/itinerary_editor_page.dart'; // 引入行程编辑页面
 
 // 模拟消息模型
 class ChatMessage {
