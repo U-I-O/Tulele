@@ -1,0 +1,54 @@
+# Ignore everything
+*
+
+# But don't ignore directories
+!*/
+
+# Except for these directories which we want to ignore
+/.dart_tool/
+/.idea/
+/android/
+/build/
+/ios/
+/linux/
+/macos/
+/web/
+/windows/
+/途乐乐功能设计计划书/
+
+# Don't ignore these specific files in the root directory
+!.gitignore
+!pubspec.yaml
+!pubspec.lock
+!README.md
+!analysis_options.yaml
+!途乐乐Flutter 前端架构设计v2.0.md
+
+# Don't ignore the lib directory and its contents
+!/lib/
+!/lib/*
+!/lib/**
+
+# Re-ignore specific files within lib that should be ignored (e.g., generated files)
+/lib/**/*.g.dart
+/lib/**/*.freezed.dart
+/lib/**/*.gr.dart
+/lib/**/*.config.dart
+/lib/**/*.injectable.dart
+
+# Test coverage
+coverage/
+
+# Crashlytics
+crashlytics-build.properties
+crashlytics.properties
+
+# Other specific files to ignore
+*.log
+*.snapshot
+*.trace
+
+# VS Code specific (uncomment if you want to ignore)
+#.vscode/
+
+# Add any other files or directories you want to ignore here
