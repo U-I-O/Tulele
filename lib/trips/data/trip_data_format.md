@@ -27,6 +27,7 @@
 - startTime: string（如09:00），开始时间
 - endTime: string（如10:00），结束时间
 - note: string，备注
+- transportation: TransportationMode，交通方式（如步行、地铁、打车等，表示到达该活动的方式，若有前序活动则为两个活动间的交通方式）
 
 ## 2. UserTrip（用户旅行方案）
 基于 TripPlan，包含用户个性化内容，如团队成员、消息流、票夹、笔记等。

@@ -34,6 +34,18 @@ class TripDay {
 }
 
 /// 行程活动
+class TransportationMode {
+  final String type; // e.g., walking, subway, taxi
+  final String provider; // e.g., Gaode, Google
+  final Map<String, dynamic> details; // Additional details like route, duration
+
+  TransportationMode({
+    required this.type,
+    required this.provider,
+    required this.details,
+  });
+}
+
 class TripActivity {
   final String id;
   final String title;
@@ -41,6 +53,7 @@ class TripActivity {
   final TimeOfDay startTime;
   final TimeOfDay endTime;
   final String note;
+  final TransportationMode transportation;
 
   TripActivity({
     required this.id,
@@ -49,6 +62,7 @@ class TripActivity {
     required this.startTime,
     required this.endTime,
     required this.note,
+    required this.transportation,
   });
 }
 

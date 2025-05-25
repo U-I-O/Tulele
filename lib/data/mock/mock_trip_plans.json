@@ -18,7 +18,8 @@
             "location": "成田机场",
             "startTime": "09:00",
             "endTime": "10:00",
-            "note": "入境、取行李"
+            "note": "入境、取行李",
+            "transportation": {"mode": "飞机", "details": "从上海到东京的航班"}
           },
           {
             "id": "a2",
@@ -26,7 +27,8 @@
             "location": "浅草寺",
             "startTime": "11:00",
             "endTime": "13:00",
-            "note": "体验日本传统文化"
+            "note": "体验日本传统文化",
+            "transportation": {"mode": "地铁", "details": "从成田机场到浅草寺"}
           }
         ]
       },
@@ -39,7 +41,8 @@
             "location": "筑地市场",
             "startTime": "08:00",
             "endTime": "10:00",
-            "note": "品尝新鲜寿司"
+            "note": "品尝新鲜寿司",
+            "transportation": {"mode": "步行", "details": "从酒店到筑地市场"}
           }
         ]
       }
@@ -64,7 +67,8 @@
             "location": "丽江古城",
             "startTime": "15:00",
             "endTime": "18:00",
-            "note": "拍照打卡"
+            "note": "拍照打卡",
+            "transportation": {"mode": "步行", "details": "丽江古城内步行"}
           }
         ]
       }
@@ -89,7 +93,8 @@
             "location": "亚龙湾",
             "startTime": "10:00",
             "endTime": "16:00",
-            "note": "沙滩玩耍、游泳"
+            "note": "沙滩玩耍、游泳",
+            "transportation": {"mode": "出租车", "details": "从酒店到亚龙湾"}
           }
         ]
       }
