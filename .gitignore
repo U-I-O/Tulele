@@ -23,6 +23,9 @@
 !README.md
 !analysis_options.yaml
 !途乐乐Flutter 前端架构设计v2.0.md
+!/assets/
+!/assets/*
+!/assets/**
 
 # Don't ignore the lib directory and its contents
 !/lib/
