@@ -1,0 +1,103 @@
+[
+  {
+    "id": "plan1",
+    "name": "日本东京5日自由行",
+    "origin": "上海",
+    "destination": "东京",
+    "startDate": "2024-07-10",
+    "endDate": "2024-07-14",
+    "tags": ["自由行", "美食", "购物"],
+    "description": "畅游东京，体验美食与购物。",
+    "days": [
+      {
+        "date": "2024-07-10",
+        "activities": [
+          {
+            "id": "a1",
+            "title": "抵达成田机场",
+            "location": "成田机场",
+            "startTime": "09:00",
+            "endTime": "10:00",
+            "note": "入境、取行李",
+            "transportation": {"mode": "飞机", "details": "从上海到东京的航班"}
+          },
+          {
+            "id": "a2",
+            "title": "浅草寺参观",
+            "location": "浅草寺",
+            "startTime": "11:00",
+            "endTime": "13:00",
+            "note": "体验日本传统文化",
+            "transportation": {"mode": "地铁", "details": "从成田机场到浅草寺"}
+          }
+        ]
+      },
+      {
+        "date": "2024-07-11",
+        "activities": [
+          {
+            "id": "a3",
+            "title": "筑地市场美食",
+            "location": "筑地市场",
+            "startTime": "08:00",
+            "endTime": "10:00",
+            "note": "品尝新鲜寿司",
+            "transportation": {"mode": "步行", "details": "从酒店到筑地市场"}
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "plan2",
+    "name": "云南丽江古城深度游",
+    "origin": "北京",
+    "destination": "丽江",
+    "startDate": "2024-08-01",
+    "endDate": "2024-08-05",
+    "tags": ["古城", "摄影", "慢生活"],
+    "description": "感受丽江古城的慢生活与美景。",
+    "days": [
+      {
+        "date": "2024-08-01",
+        "activities": [
+          {
+            "id": "b1",
+            "title": "古城闲逛",
+            "location": "丽江古城",
+            "startTime": "15:00",
+            "endTime": "18:00",
+            "note": "拍照打卡",
+            "transportation": {"mode": "步行", "details": "丽江古城内步行"}
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "plan3",
+    "name": "三亚亲子海岛假期",
+    "origin": "广州",
+    "destination": "三亚",
+    "startDate": "2024-09-20",
+    "endDate": "2024-09-25",
+    "tags": ["亲子", "海岛", "度假"],
+    "description": "适合家庭亲子游的海岛假期。",
+    "days": [
+      {
+        "date": "2024-09-20",
+        "activities": [
+          {
+            "id": "c1",
+            "title": "亚龙湾沙滩",
+            "location": "亚龙湾",
+            "startTime": "10:00",
+            "endTime": "16:00",
+            "note": "沙滩玩耍、游泳",
+            "transportation": {"mode": "出租车", "details": "从酒店到亚龙湾"}
+          }
+        ]
+      }
+    ]
+  }
+]
