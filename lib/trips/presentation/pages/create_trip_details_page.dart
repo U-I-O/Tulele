@@ -1,6 +1,8 @@
-// lib/create_trip_details_page.dart
+// lib/trips/presentation/pages/create_trip_details_page.dart
 import 'package:flutter/material.dart';
-import 'itinerary_editor_page.dart';
+// *** 修改点：导入新的 trip_detail_page.dart ***
+import 'trip_detail_page.dart'; // 假设模型和枚举也在此文件或可从此文件访问
+import 'dart:math'; // 用于生成随机ID
 
 class CreateTripDetailsPage extends StatefulWidget {
   const CreateTripDetailsPage({super.key, this.initialTripName});
@@ -25,7 +27,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
   final Set<String> _selectedTags = {};
   final TextEditingController _customTagController = TextEditingController();
 
-  @override
+ @override
   void initState() {
     super.initState();
     _tripNameController = TextEditingController(text: widget.initialTripName ?? '');
@@ -38,7 +40,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
       firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
       locale: const Locale('zh'),
-      builder: (BuildContext context, Widget? child) {
+       builder: (BuildContext context, Widget? child) {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: ColorScheme.light(
@@ -48,8 +50,8 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
             ),
             dialogBackgroundColor: Colors.white,
             buttonTheme: ButtonThemeData(
-                textTheme: ButtonTextTheme.primary,
-                colorScheme: ColorScheme.light(primary: Theme.of(context).primaryColor)
+              textTheme: ButtonTextTheme.primary,
+              colorScheme: ColorScheme.light(primary: Theme.of(context).primaryColor)
             ),
           ),
           child: child!,
@@ -87,7 +89,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('填写行程信息'),
+        title: const Text('填写行程基础信息'), // 更改标题更准确
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -120,9 +122,9 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       controller: _departureController,
                       decoration: const InputDecoration(
                         hintText: '出发地',
-                        prefixIcon: Icon(Icons.flight_takeoff_outlined, size: 20),
+                         prefixIcon: Icon(Icons.flight_takeoff_outlined, size: 20),
                       ),
-                      validator: (value) {
+                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return '请输入出发地';
                         }
@@ -186,7 +188,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                           _endDate != null
                               ? "${_endDate!.year}/${_endDate!.month.toString().padLeft(2, '0')}/${_endDate!.day.toString().padLeft(2, '0')}"
                               : '结束日期',
-                          style: TextStyle(
+                           style: TextStyle(
                             color: _endDate != null ? Theme.of(context).colorScheme.onSurface : Colors.grey[600],
                             fontSize: 16,
                           ),
@@ -245,7 +247,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       controller: _customTagController,
                       decoration: const InputDecoration(
                         hintText: '自定义标签...',
-                        prefixIcon: Icon(Icons.label_outline, size: 20),
+                         prefixIcon: Icon(Icons.label_outline, size: 20),
                       ),
                       onFieldSubmitted: (_) => _addCustomTag(),
                     ),
@@ -264,9 +266,9 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
-                        Navigator.of(context).pop();
+                        Navigator.of(context).pop(); // 简单返回上一页
                       },
-                      child: const Text('返回'),
+                      child: const Text('上一步'), // 按钮文字改为上一步
                     ),
                   ),
                   const SizedBox(width: 16.0),
@@ -275,67 +277,59 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       onPressed: () {
                         if (_formKey.currentState!.validate()) {
                           if (_startDate == null || _endDate == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('请选择完整的出行日期')),
                             );
                             return;
                           }
-                          if (_endDate!.isBefore(_startDate!)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                           if (_endDate!.isBefore(_startDate!)) {
+                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('结束日期不能早于出发日期')),
                             );
                             return;
                           }
 
-                          // *** 修改点：确保 tripData['days'] 是一个 List<Map<String, dynamic>> ***
-                          final List<Map<String, dynamic>> daysList = [
-                            {
-                              'dayNumber': 1,
-                              'date': _startDate,
-                              'title': '${_startDate!.month}月${_startDate!.day}日, 星期X', // 星期X/Y是占位符
-                              'activities': [
-                                {'time': '09:00 - 12:30', 'description': '抵达${_destinationController.text}', 'details': '航班号XXX, 前往酒店'},
-                                {'time': '13:30 - 14:30', 'description': '酒店入住', 'details': '酒店名称, 享受下午茶'},
-                                {'time': '15:00 - 18:00', 'description': '初步探索${_destinationController.text}', 'details': '例如：${_destinationController.text}市中心逛逛'},
-                              ]
-                            }
-                          ];
-
-                          if (_endDate!.isAfter(_startDate!)) {
-                            int duration = _endDate!.difference(_startDate!).inDays;
-                            for (int i = 1; i <= duration; i++) {
+                          // *** 修改点：为新行程生成唯一ID并准备初始数据 ***
+                          final String newTripId = 'new_trip_${DateTime.now().millisecondsSinceEpoch}';
+                          
+                          // 构建初始的每日安排框架
+                          final List<Map<String, dynamic>> initialDaysData = [];
+                          int duration = _endDate!.difference(_startDate!).inDays;
+                          for (int i = 0; i <= duration; i++) { // 从0开始，包含起始日和结束日
                               DateTime currentDate = _startDate!.add(Duration(days: i));
-                              daysList.add({ // *** 修改点：直接 add 到 daysList ***
+                              initialDaysData.add({
                                 'dayNumber': i + 1,
                                 'date': currentDate,
-                                'title': '${currentDate.month}月${currentDate.day}日, 星期Y',
-                                'activities': [
-                                  {'time': '全天', 'description': '自由活动或根据AI推荐', 'details': '本日详细安排待定'}
-                                ]
+                                // 星期几可以在 TripDetailPage 中格式化，或在这里计算
+                                'title': '${currentDate.month}月${currentDate.day}日', 
+                                'activities': [], // 初始为空活动列表
+                                'notes': '', // 初始为空笔记
                               });
-                            }
                           }
 
-                          final tripData = {
+                          final Map<String, dynamic> newTripInitialData = {
                             'name': _tripNameController.text,
-                            'departure': _departureController.text,
-                            'destination': _destinationController.text,
-                            'startDate': _startDate,
-                            'endDate': _endDate,
-                            'tags': _selectedTags.toList(),
-                            'days': daysList, // *** 修改点：使用 daysList ***
+                            'departure': _departureController.text, // 虽然没直接用，但可以传递
+                            'destination': _destinationController.text, // 同上
+                            'startDate': _startDate, // 同上
+                            'endDate': _endDate, // 同上
+                            'tags': _selectedTags.toList(), // 同上
+                            'days': initialDaysData,
                           };
-
 
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => ItineraryEditorPage(tripData: tripData),
+                              builder: (context) => TripDetailPage(
+                                tripId: newTripId, // 传递新ID
+                                initialMode: TripMode.edit, // 以编辑模式打开
+                                newTripInitialData: newTripInitialData, // 传递初始数据
+                              ),
                             ),
                           );
                         }
                       },
-                      child: const Text('下一步 (编辑行程)'),
+                      child: const Text('下一步 (编辑日程)'),
                     ),
                   ),
                 ],
