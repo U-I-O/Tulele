@@ -2,16 +2,15 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For ImageFilter
 import 'dart:math'; // For random ID generation (temp)
+import 'package:dotted_border/dotted_border.dart'; // Ensure this is in your pubspec.yaml
 
-// 导入实际的子组件 (假设已拆分到 widgets 文件夹下)
-// 您需要确保这些路径是正确的，并且对应的文件存在于您的项目中
-import '../widgets/activity_card_widget.dart';
+// Import actual sub-widget files if they exist and are used.
+// For this complete file, sub-widgets are defined as private methods.
+// import '../widgets/activity_card_widget.dart'; // Now defined as _StyledActivityCard method
 import '../widgets/map_view_widget.dart';
 import '../widgets/ticket_view_widget.dart';
 
-// 确保模型类定义 (TripMode, BottomView, ActivityStatus, Activity, TripDay, Trip, Ticket)
-// 在这里或从正确位置导入。为了让这个文件能独立运行，暂时在此处定义。
-// 最佳实践是将它们放到独立的 domain/entities 或 core/enums 文件中。
+// --- Model Classes and Enums (Should ideally be in separate files) ---
 enum TripMode { view, edit, travel }
 enum BottomView { itinerary, map, tickets }
 enum ActivityStatus { pending, ongoing, completed }
@@ -24,56 +23,31 @@ class Activity {
   String? transportToNext;
   String? transportDuration;
   ActivityStatus status;
-
-  Activity({
-    required this.id,
-    required this.time,
-    required this.description,
-    this.location,
-    this.transportToNext,
-    this.transportDuration,
-    this.status = ActivityStatus.pending,
-  });
+  Activity({ required this.id, required this.time, required this.description, this.location, this.transportToNext, this.transportDuration, this.status = ActivityStatus.pending });
 }
-
 class TripDay {
   final int dayNumber;
   final DateTime date;
   final List<Activity> activities;
   String notes;
-
-  TripDay({
-    required this.dayNumber,
-    required this.date,
-    required this.activities,
-    this.notes = '',
-  });
+  TripDay({ required this.dayNumber, required this.date, required this.activities, this.notes = '' });
 }
-
 class Trip {
   final String id;
   String name;
   List<TripDay> days;
   String? coverImageUrl;
-
-  Trip({
-    required this.id,
-    required this.name,
-    required this.days,
-    this.coverImageUrl,
-  });
+  Trip({ required this.id, required this.name, required this.days, this.coverImageUrl });
 }
-
 class Ticket {
   final String id;
   final String type;
   final String name;
   final DateTime dateTime;
   final String details;
-
   Ticket({required this.id, required this.type, required this.name, required this.dateTime, required this.details});
 }
-// --- 数据模型定义结束 ---
+// --- End of Model/Enum Definitions ---
 
 
 
@@ -101,21 +75,21 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   final PageController _mainContentPageController = PageController(initialPage: 0);
   int _currentMainViewIndex = 0;
 
-  bool _showAiChat = false;
+  bool _isAiChatExpanded = false;
   final TextEditingController _aiTextController = TextEditingController();
   final FocusNode _aiFocusNode = FocusNode();
 
-  // 模拟数据
+  // Sample Data
   final Map<String, Trip> _sampleTrips = {
     '1': Trip(id: '1', name: '三亚海岛度假', coverImageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YmVhY2h8ZW58MHx8MHx8fDA%3D&auto=format&fit=crop&w=800&q=60', days: [
       TripDay(dayNumber: 1, date: DateTime(2025, 6, 1), activities: [
-        Activity(id: 'a1', time: '09:00 - 12:30', description: '抵达三亚凤凰国际机场', location: '三亚凤凰国际机场', transportToNext: '打车', transportDuration: '约30分钟'),
-        Activity(id: 'a2', time: '13:30 - 14:30', description: '酒店入住', location: '三亚海棠湾喜来登度假酒店', status: ActivityStatus.completed),
-        Activity(id: 'a3', time: '15:00 - 18:00', description: '亚龙湾沙滩漫步', location: '亚龙湾国家旅游度假区', status: ActivityStatus.ongoing),
+        Activity(id: 'a1', time: '09:00', description: '抵达三亚凤凰国际机场，前往酒店', location: '三亚凤凰国际机场', transportToNext: '打车', transportDuration: '约30分钟'),
+        Activity(id: 'a2', time: '13:30', description: '酒店入住及午餐', location: '三亚海棠湾喜来登度假酒店', status: ActivityStatus.completed),
+        Activity(id: 'a3', time: '15:00', description: '亚龙湾沙滩漫步与水上活动', location: '亚龙湾国家旅游度假区', status: ActivityStatus.ongoing),
       ], notes: "第一天笔记：天气晴朗，心情愉悦！记得涂防晒。"),
       TripDay(dayNumber: 2, date: DateTime(2025, 6, 2), activities: [
-        Activity(id: 'b1', time: '10:00 - 16:00', description: '蜈支洲岛潜水和水上活动', location: '蜈支洲岛'),
-        Activity(id: 'b2', time: '18:00 - 19:30', description: '海鲜大餐', location: '第一市场附近'),
+        Activity(id: 'b1', time: '10:00', description: '蜈支洲岛潜水和水上活动', location: '蜈支洲岛'),
+        Activity(id: 'b2', time: '18:00', description: '海鲜大餐', location: '第一市场附近'),
       ]),
       TripDay(dayNumber: 3, date: DateTime(2025, 6, 3), activities: [
         Activity(id: 'c1', time: '全天', description: '自由活动或南山文化旅游区', location: '南山文化旅游区'),
@@ -158,9 +132,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }
 
     _selectedDayIndex = _tripData.days.isNotEmpty ? 0 : -1;
-    if (_currentMode == TripMode.edit || _currentMode == TripMode.travel) {
-      _showAiChat = true;
-    }
 
     _mainContentPageController.addListener(() {
       if (_mainContentPageController.page?.round() != _currentMainViewIndex) {
@@ -182,12 +153,12 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   }
 
   void _saveTripAndSwitchToViewMode() {
-    _sampleTrips[_tripData.id] = _tripData; // 更新模拟数据
+    _sampleTrips[_tripData.id] = _tripData;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程已保存 (模拟)')));
     if(mounted) {
       setState(() {
         _currentMode = TripMode.view;
-        _showAiChat = false;
+        _isAiChatExpanded = false;
       });
     }
   }
@@ -211,7 +182,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           activities: [],
         ));
         _selectedDayIndex = _tripData.days.length - 1;
-        // 当添加新日期时，也让PageView跳转到行程视图
         _mainContentPageController.jumpToPage(0);
       });
     }
@@ -234,7 +204,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       });
     }
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已添加，请编辑其详情')));
-    _editActivity(currentDay, currentDay.activities.last, currentDay.activities.length -1);
+    if (currentDay.activities.isNotEmpty) {
+      _editActivity(currentDay, currentDay.activities.last, currentDay.activities.length -1);
+    }
   }
 
   void _editActivity(TripDay day, Activity activity, int activityIndex) {
@@ -251,7 +223,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: timeController, decoration: const InputDecoration(labelText: '时间 (如 09:00 - 10:00)')),
+                TextField(controller: timeController, decoration: const InputDecoration(labelText: '时间 (如 09:00)')),
                 const SizedBox(height: 8),
                 TextField(controller: descController, decoration: const InputDecoration(labelText: '活动描述')),
                 const SizedBox(height: 8),
@@ -322,6 +294,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
           onTap: _currentMode == TripMode.edit ? _editTripNameAndCover : null,
@@ -332,40 +305,51 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                 height: 200,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  image: _tripData.coverImageUrl != null && _tripData.coverImageUrl!.isNotEmpty
-                      ? DecorationImage(
-                    image: NetworkImage(_tripData.coverImageUrl!),
-                    fit: BoxFit.cover,
-                    colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.3), BlendMode.darken),
-                  )
-                      : null,
+                    color: Colors.grey.shade200,
+                    image: _tripData.coverImageUrl != null && _tripData.coverImageUrl!.isNotEmpty
+                        ? DecorationImage(
+                      image: NetworkImage(_tripData.coverImageUrl!),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.2), BlendMode.darken),
+                    )
+                        : DecorationImage( // 使用非 const 的 AssetImage
+                      image: const AssetImage('assets/images/default_cover.png'), // 确保图片路径正确且在pubspec.yaml中声明
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.2), BlendMode.darken),
+                    )
                 ),
-                child: _tripData.coverImageUrl == null || _tripData.coverImageUrl!.isEmpty
-                    ? Center(child: Icon(Icons.image_search_outlined, size: 60, color: Colors.grey.shade400))
-                    : null,
               ),
               if (_currentMode == TripMode.edit)
                 Positioned(
-                  top: 10, right: 10,
+                  top: 12, right: 12,
                   child: Container(
-                      padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.black.withOpacity(0.3),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.edit_outlined, color: Colors.white, size: 18)
+                      child: const Icon(Icons.edit_outlined, color: Colors.white, size: 20)
                   ),
                 ),
+              Container(
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20,0,20,20),
+                padding: const EdgeInsets.all(20.0),
                 child: Text(
                   _tripData.name,
                   style: const TextStyle(
-                    fontSize: 28,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
-                    shadows: [Shadow(blurRadius: 5, color: Colors.black87, offset: Offset(1, 2))],
+                    shadows: [Shadow(blurRadius: 2, color: Colors.black54, offset: Offset(1, 1))],
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -374,9 +358,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             ],
           ),
         ),
-        if (_currentMode == TripMode.view) _buildViewModeActionButtonsWidget(),
-        if (_currentMode == TripMode.edit) _buildEditModeActionButtonsWidget(),
-        if (_currentMode == TripMode.travel) _buildTravelModeHeaderInfoWidget(),
+        if (_currentMode == TripMode.view) _buildViewModeActionButtonsStyled(),
+        if (_currentMode == TripMode.edit) _buildEditModeActionButtonsStyled(),
+        if (_currentMode == TripMode.travel) _buildTravelModeHeaderInfoStyled(),
       ],
     );
   }
@@ -395,6 +379,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   return SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         TextField(
                           controller: nameController,
@@ -402,19 +387,25 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                         ),
                         const SizedBox(height: 16),
                         Text("封面图片URL (可选):", style: TextStyle(color: Colors.grey[700])),
+                        const SizedBox(height: 4),
                         TextField(
                           decoration: const InputDecoration(hintText: "粘贴图片URL或留空"),
                           controller: TextEditingController(text: tempCoverUrl),
                           onChanged: (value) {
                             tempCoverUrl = value.isNotEmpty ? value : null;
-                            // 调用 setStateDialog 刷新对话框内的预览 (如果需要实时预览)
-                            // setStateDialog((){});
                           },
                         ),
                         if (tempCoverUrl != null && tempCoverUrl!.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 8.0),
-                            child: Image.network(tempCoverUrl!, height: 60, errorBuilder: (c,e,s) => Text("图片链接无效", style: TextStyle(color: Colors.red.shade700, fontSize: 12))),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                tempCoverUrl!,
+                                height: 80, width: double.infinity, fit: BoxFit.cover,
+                                errorBuilder: (c,e,s) => Container(height: 60, color: Colors.grey[200], child: Center(child: Text("图片预览失败", style: TextStyle(color: Colors.red.shade700, fontSize: 12)))),
+                              ),
+                            ),
                           )
                       ],
                     ),
@@ -441,83 +432,95 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     );
   }
 
-  Widget _buildViewModeActionButtonsWidget() {
+  Widget _buildStyledButton(BuildContext context, {required String label, required IconData icon, required VoidCallback onPressed, bool isPrimary = false}) {
+    final ButtonStyle style = isPrimary
+        ? ElevatedButton.styleFrom(
+      backgroundColor: Theme.of(context).primaryColor,
+      foregroundColor: Colors.white,
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25.0)),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+    )
+        : OutlinedButton.styleFrom(
+      foregroundColor: Theme.of(context).primaryColor,
+      side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.7)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25.0)),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+    );
+
+    Widget buttonChild = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: isPrimary ? Colors.white : Theme.of(context).primaryColor),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isPrimary ? Colors.white : Theme.of(context).primaryColor)),
+      ],
+    );
+
+    return isPrimary
+        ? ElevatedButton(onPressed: onPressed, style: style, child: buttonChild)
+        : OutlinedButton(onPressed: onPressed, style: style, child: buttonChild);
+  }
+
+  Widget _buildViewModeActionButtonsStyled() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Row(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-              label: const Text('编辑行程'),
-              onPressed: () { if(mounted) setState(() { _currentMode = TripMode.edit; _showAiChat = true; }); },
-              style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).primaryColor, side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.7))),
-            ),
-          ),
+          Expanded(child: _buildStyledButton(context, label: '编辑行程', icon: Icons.edit_note_outlined, onPressed: () { if(mounted) setState(() { _currentMode = TripMode.edit; }); })),
           const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.directions_walk_outlined, size: 18, color: Colors.white),
-              label: const Text('开始旅行'),
-              onPressed: () {
-                if(mounted) {
-                  setState(() {
-                    _currentMode = TripMode.travel;
-                    _showAiChat = true;
-                    if (_tripData.days.isNotEmpty && _selectedDayIndex >=0 && _selectedDayIndex < _tripData.days.length) {
-                      final currentDay = _tripData.days[_selectedDayIndex];
-                      for (var act in currentDay.activities) { act.status = ActivityStatus.pending; }
-                      _checkAndAdvanceOngoingActivity(currentDay, -1);
-                    }
-                  });
+          Expanded(child: _buildStyledButton(context, label: '开始旅行', icon: Icons.navigation_outlined, onPressed: () {
+            if(mounted) {
+              setState(() {
+                _currentMode = TripMode.travel;
+                if (_tripData.days.isNotEmpty && _selectedDayIndex >=0 && _selectedDayIndex < _tripData.days.length) {
+                  final currentDay = _tripData.days[_selectedDayIndex];
+                  for (var act in currentDay.activities) { act.status = ActivityStatus.pending; }
+                  _checkAndAdvanceOngoingActivity(currentDay, -1);
                 }
-              },
-              style: ElevatedButton.styleFrom(foregroundColor: Colors.white),
-            ),
-          ),
+              });
+            }
+          }, isPrimary: true)),
         ],
       ),
     );
   }
 
-  Widget _buildEditModeActionButtonsWidget() {
+  Widget _buildEditModeActionButtonsStyled() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 12.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          IconButton(icon: const Icon(Icons.undo_outlined), tooltip: '撤销', onPressed: () {/* TODO */}),
-          IconButton(icon: const Icon(Icons.history_outlined), tooltip: '历史版本', onPressed: () {/* TODO */}),
+          IconButton(icon: Icon(Icons.undo_outlined, color: Colors.grey[700]), tooltip: '撤销', onPressed: () {/* TODO */}),
+          IconButton(icon: Icon(Icons.history_outlined, color: Colors.grey[700]), tooltip: '历史版本', onPressed: () {/* TODO */}),
           const SizedBox(width: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.save_outlined, size: 18, color: Colors.white),
-            label: const Text('保存行程'),
-            onPressed: _saveTripAndSwitchToViewMode,
-            style: ElevatedButton.styleFrom(foregroundColor: Colors.white),
+          _buildStyledButton(context, label: '保存', icon: Icons.save_alt_outlined, onPressed: _saveTripAndSwitchToViewMode, isPrimary: true)
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTravelModeHeaderInfoStyled() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+      color: Theme.of(context).primaryColor.withOpacity(0.03),
+      child: Row(
+        children: [
+          Icon(Icons.explore_rounded, color: Theme.of(context).primaryColor, size: 22),
+          const SizedBox(width: 8),
+          Text("旅行模式", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Theme.of(context).primaryColor)),
+          const Spacer(),
+          TextButton(
+              onPressed: (){ if(mounted) setState(() { _currentMode = TripMode.view; _isAiChatExpanded = false; }); },
+              style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+              child: const Text("结束旅行")
           )
         ],
       ),
     );
   }
 
-  Widget _buildTravelModeHeaderInfoWidget() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Row(
-        children: [
-          Icon(Icons.explore_outlined, color: Theme.of(context).primaryColor, size: 20),
-          const SizedBox(width: 8),
-          Text("旅行模式已激活", style: TextStyle(fontWeight: FontWeight.w500, color: Theme.of(context).primaryColor)),
-          const Spacer(),
-          TextButton(onPressed: (){
-            if(mounted) setState(() { _currentMode = TripMode.view; _showAiChat = false; });
-          }, child: const Text("结束旅行"))
-        ],
-      ),
-    );
-  }
-
-  // ** Corrected: This method returns the SliverPersistentHeader for the date capsules **
   Widget _buildDateCapsuleBarSliver() {
     return SliverPersistentHeader(
       pinned: true,
@@ -542,7 +545,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                     avatar: Icon(Icons.add, size: 18, color: Theme.of(context).primaryColor),
                     label: const Text('添加日期'),
                     onPressed: _addDay,
-                    backgroundColor: Colors.grey[100],
+                    backgroundColor: Colors.grey[50],
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                         side: BorderSide(color: Colors.grey[300]!)
@@ -569,15 +572,17 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                       _mainContentPageController.jumpToPage(0);
                     }
                   },
-                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.15),
+                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.10),
                   labelStyle: TextStyle(
                     color: isSelected ? Theme.of(context).primaryColor : Colors.grey[700],
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
-                  backgroundColor: Colors.grey[100],
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  pressElevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
-                      side: BorderSide(color: isSelected ? Theme.of(context).primaryColor : Colors.grey[300]!)
+                      side: BorderSide(color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.7) : Colors.grey[300]!)
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                 ),
@@ -592,7 +597,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   Widget _buildMainContentPageView() {
     if (_tripData.days.isEmpty || _selectedDayIndex < 0 || _selectedDayIndex >= _tripData.days.length) {
       return Center(child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20.0), // Added padding
         child: Text(
           _tripData.days.isEmpty && _currentMode == TripMode.edit ? '请在上方日期栏点击“添加日期”以开始规划您的行程。' :
           _tripData.days.isEmpty ? '此行程当前没有日期安排。' :
@@ -619,9 +624,10 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   Widget _buildActivitiesListWithAddButton() {
     if (_tripData.days.isEmpty || _selectedDayIndex < 0 || _selectedDayIndex >= _tripData.days.length) {
       return Center(child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Text(_tripData.days.isEmpty && _currentMode == TripMode.edit ? '请点击日期栏“添加日期”开始规划' :
-        _tripData.days.isEmpty ? '此行程暂无日期安排' : '请选择一个日期查看活动',
+        padding: const EdgeInsets.all(20.0), // Added padding
+        child: Text(
+          _tripData.days.isEmpty && _currentMode == TripMode.edit ? '请点击日期栏“添加日期”开始规划' :
+          _tripData.days.isEmpty ? '此行程暂无日期安排' : '请选择一个日期查看活动',
           style: TextStyle(fontSize: 16, color: Colors.grey[500]),
           textAlign: TextAlign.center,
         ),
@@ -634,9 +640,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       itemCount++;
     }
 
-    if (itemCount == 0 && _currentMode != TripMode.edit) {
+    if (itemCount == 0 && _currentMode != TripMode.edit) { // Can be 1 in edit mode for add button
       return Center(child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20.0), // Added padding
         child: Text('本日暂无活动安排', style: TextStyle(fontSize: 16, color: Colors.grey[500])),
       ));
     }
@@ -646,14 +652,14 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       itemCount: itemCount,
       itemBuilder: (context, index) {
         if (_currentMode == TripMode.edit && index == currentDay.activities.length) {
-          return _buildAddActivityCard();
+          return _buildAddActivityCardStyled();
         }
         final activity = currentDay.activities[index];
-        final bool showConnector = index < currentDay.activities.length - 1;
-        return ActivityCard(
+        // showConnector is now handled within _StyledActivityCard based on its position
+        return _StyledActivityCard(
           activity: activity,
           mode: _currentMode,
-          showConnector: showConnector,
+          // showConnector: index < currentDay.activities.length - 1, // Pass this explicitly
           onTap: _currentMode == TripMode.edit ? () => _editActivity(currentDay, activity, index) : null,
           onStatusChange: _currentMode == TripMode.travel ? (status) {
             if(mounted) {
@@ -668,108 +674,217 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     );
   }
 
-  Widget _buildAddActivityCard() {
-    return InkWell(
-      onTap: _addActivityToCurrentDay,
-      borderRadius: BorderRadius.circular(12),
-      child: Card(
-        elevation: 1.0,
-        margin: const EdgeInsets.only(bottom: 16, left: 24 + 16.0),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5), style: BorderStyle.solid, width: 1.5)
-        ),
-        color: Theme.of(context).primaryColor.withOpacity(0.05),
-        child: Container(
-          height: 80,
-          padding: const EdgeInsets.all(16.0),
-          child: Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.add_circle_outline_rounded, color: Theme.of(context).primaryColor, size: 24),
-                const SizedBox(width: 8),
-                Text('添加新活动', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Theme.of(context).primaryColor)),
-              ],
+  Widget _buildAddActivityCardStyled() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 40.0, bottom: 16), // Adjusted left padding to align with activity cards' content area
+      child: InkWell(
+        onTap: _addActivityToCurrentDay,
+        borderRadius: BorderRadius.circular(16),
+        child: DottedBorder(
+          color: Theme.of(context).primaryColor.withOpacity(0.6),
+          strokeWidth: 1.5,
+          dashPattern: const [6, 4],
+          radius: const Radius.circular(16),
+          borderType: BorderType.RRect,
+          child: Container(
+            height: 70,
+            decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(16)
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomViewSwitcherBar() {
-    return BottomNavigationBar(
-      currentIndex: _currentMainViewIndex,
-      onTap: (index) {
-        _mainContentPageController.animateToPage(
-          index,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      },
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.list_alt_outlined), label: "行程", activeIcon: Icon(Icons.list_alt_rounded)),
-        BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: "地图", activeIcon: Icon(Icons.map_rounded)),
-        BottomNavigationBarItem(icon: Icon(Icons.confirmation_number_outlined), label: "票夹", activeIcon: Icon(Icons.confirmation_number_rounded)),
-      ],
-      type: BottomNavigationBarType.fixed,
-      selectedFontSize: 12,
-      unselectedFontSize: 12,
-      backgroundColor: Colors.white,
-      elevation: 8.0,
-    );
-  }
-
-  Widget _buildAiChatInputBarStyled() {
-    return Container(
-      margin: EdgeInsets.fromLTRB(12, 8, 12, 12 + MediaQuery.of(context).padding.bottom * 0.5),
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-      decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
-          borderRadius: BorderRadius.circular(30.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              spreadRadius: 0,
-              offset: const Offset(0, -1),
-            ),
-          ],
-          border: Border.all(color: Colors.grey.shade200)
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _aiTextController,
-              focusNode: _aiFocusNode,
-              style: const TextStyle(fontSize: 15),
-              decoration: InputDecoration(
-                hintText: '与AI助手聊聊...',
-                hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+            child: Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_circle_outline_rounded, color: Theme.of(context).primaryColor.withOpacity(0.8), size: 22),
+                  const SizedBox(width: 10),
+                  Text('添加新活动', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Theme.of(context).primaryColor.withOpacity(0.9))),
+                ],
               ),
-              minLines: 1,
-              maxLines: 3,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (text) => _sendAiMessage(text),
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.mic_none_outlined, color: Theme.of(context).primaryColor.withOpacity(0.9)),
-            tooltip: '语音输入',
-            onPressed: () { /* TODO: 语音输入 */ },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomViewSwitcherBarSliver() { // This now returns a SliverPersistentHeader
+    return SliverPersistentHeader(
+      pinned: true, // Will stick below the main SliverAppBar AND DateCapsuleBarSliver
+      delegate: _SliverAppBarDelegate(
+        minHeight: 50.0,
+        maxHeight: 50.0,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
           ),
-          IconButton(
-            icon: Icon(Icons.send_rounded, color: Theme.of(context).primaryColor),
-            tooltip: '发送',
-            onPressed: () => _sendAiMessage(_aiTextController.text),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildBottomViewTab(BottomView.itinerary, Icons.article_outlined, '行程'),
+              _buildBottomViewTab(BottomView.map, Icons.map_outlined, '地图'),
+              _buildBottomViewTab(BottomView.tickets, Icons.confirmation_number_outlined, '票夹'),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomViewTab(BottomView view, IconData icon, String label) {
+    final bool isSelected = _currentMainViewIndex == view.index;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (_currentMainViewIndex != view.index) {
+            _mainContentPageController.animateToPage(
+              view.index,
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+            );
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
+                width: 2.5,
+              ),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[500], size: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingAiChat(BuildContext context) {
+    bool isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+    bool shouldShowAiButton = (_currentMode == TripMode.edit || _currentMode == TripMode.travel);
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      bottom: isKeyboardVisible
+          ? MediaQuery.of(context).viewInsets.bottom + 10
+          : (_isAiChatExpanded ? 10 : 20),
+      left: _isAiChatExpanded ? 12 : null,
+      right: _isAiChatExpanded ? 12 : 20,
+      child: Material(
+        color: Colors.transparent,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return ScaleTransition(scale: animation, child: child);
+          },
+          layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) { // Added ? for currentChild
+            return Stack(
+              alignment: Alignment.bottomRight,
+              children: <Widget>[
+                ...previousChildren,
+                if (currentChild != null) currentChild,
+              ],
+            );
+          },
+          child: shouldShowAiButton
+              ? (_isAiChatExpanded
+              ? _buildExpandedAiInput(context)
+              : _buildCollapsedAiButton(context)
+          )
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollapsedAiButton(BuildContext context) {
+    return FloatingActionButton(
+      key: const ValueKey('collapsedAiButton'),
+      onPressed: () {
+        if (mounted) { setState(() { _isAiChatExpanded = true; });}
+        WidgetsBinding.instance.addPostFrameCallback((_) => _aiFocusNode.requestFocus());
+      },
+      backgroundColor: Theme.of(context).colorScheme.secondary,
+      elevation: 4.0,
+      tooltip: 'AI助手',
+      child: const Icon(Icons.luggage_rounded, color: Colors.white),
+    );
+  }
+
+  Widget _buildExpandedAiInput(BuildContext context) {
+    return Container(
+      key: const ValueKey('expandedAiInput'),
+      width: _isAiChatExpanded ? MediaQuery.of(context).size.width - 24 : 0,
+      child: Material(
+        elevation: 0.0, // Removed shadow from here
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28.0)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28.0),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(28.0),
+                  border: Border.all(color: Colors.grey.shade200.withOpacity(0.7))
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: Colors.grey[600], size: 22),
+                    onPressed: () {
+                      if (mounted) setState(() { _isAiChatExpanded = false; });
+                      _aiFocusNode.unfocus();
+                    },
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: TextField(
+                      controller: _aiTextController,
+                      focusNode: _aiFocusNode,
+                      style: const TextStyle(fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: '与AI助手聊聊...',
+                        hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 12.0),
+                      ),
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (text) => _sendAiMessage(text),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.mic_none_outlined, color: Theme.of(context).primaryColor),
+                    tooltip: '语音输入',
+                    onPressed: () { /* TODO */ },
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.send_rounded, color: Theme.of(context).primaryColor),
+                    tooltip: '发送',
+                    onPressed: () => _sendAiMessage(_aiTextController.text),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -785,44 +900,45 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       body: SafeArea(
-        top: true, // AppBar is part of CustomScrollView, so top SafeArea is needed here
-        bottom: false, // AI input bar handles its own bottom padding if visible
-        child: Column(
+        top: false,
+        bottom: false,
+        child: Stack(
           children: [
-            Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  SliverAppBar(
-                    expandedHeight: _currentMode == TripMode.view ? 320.0 : 280.0,
-                    floating: false, // Set to false if you want it to only appear when scrolling to top
-                    pinned: true,    // Makes the collapsed AppBar stick
-                    stretch: true,
-                    backgroundColor: Colors.white,
-                    elevation: 0.5,
-                    automaticallyImplyLeading: true,
-                    iconTheme: IconThemeData(color: Colors.grey[800]),
-                    flexibleSpace: FlexibleSpaceBar(
-                      collapseMode: CollapseMode.pin,
-                      background: _buildCoverAndTitleSectionWidget(context),
-                      // You might want a title here for when it's collapsed
-                      // title: _currentMode != TripMode.view ? Text("编辑中...") : null,
-                      // centerTitle: true,
-                    ),
+            Column(
+              children: [
+                Expanded(
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverAppBar(
+                        expandedHeight: _currentMode == TripMode.view ? 300.0 : 260.0,
+                        floating: false,
+                        pinned: true,
+                        stretch: true,
+                        backgroundColor: Colors.white,
+                        elevation: 0,
+                        automaticallyImplyLeading: true,
+                        iconTheme: IconThemeData(color: Colors.grey[700]),
+                        flexibleSpace: FlexibleSpaceBar(
+                          collapseMode: CollapseMode.pin,
+                          background: _buildCoverAndTitleSectionWidget(context),
+                        ),
+                      ),
+                      _buildBottomViewSwitcherBarSliver(), // Moved here
+                      _buildDateCapsuleBarSliver(),
+                      SliverFillRemaining(
+                        hasScrollBody: true,
+                        child: _buildMainContentPageView(),
+                      ),
+                    ],
                   ),
-                  // Date capsule bar as a SliverPersistentHeader
-                  _buildDateCapsuleBarSliver(),
-
-                  SliverFillRemaining(
-                    hasScrollBody: true,
-                    child: _buildMainContentPageView(),
-                  ),
-                ],
-              ),
+                ),
+                // Removed _buildBottomViewSwitcherBar() from here
+              ],
             ),
-            _buildBottomViewSwitcherBar(),
-            if (_showAiChat) _buildAiChatInputBarStyled(),
+            if (_currentMode == TripMode.edit || _currentMode == TripMode.travel)
+              _buildFloatingAiChat(context),
           ],
         ),
       ),
@@ -830,13 +946,201 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   }
 }
 
-// _SliverAppBarDelegate 辅助类
-class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverAppBarDelegate({
-    required this.minHeight,
-    required this.maxHeight,
-    required this.child,
+// _StyledActivityCard (The new styled card for activities)
+// Placed within the same file for simplicity, but ideally in its own widget file.
+class _StyledActivityCard extends StatelessWidget {
+  final Activity activity;
+  final TripMode mode;
+  // final bool showConnector; // Connector logic is now part of its parent Stack
+  final VoidCallback? onTap;
+  final ValueChanged<ActivityStatus>? onStatusChange;
+
+  const _StyledActivityCard({
+    // super.key, // Key can be omitted
+    required this.activity,
+    required this.mode,
+    // required this.showConnector,
+    this.onTap,
+    this.onStatusChange,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    final isOngoing = mode == TripMode.travel && activity.status == ActivityStatus.ongoing;
+    final isCompleted = mode == TripMode.travel && activity.status == ActivityStatus.completed;
+
+    Color cardBackgroundColor = Colors.white;
+    Color titleColor = Colors.grey.shade800;
+    Color subtitleColor = Colors.grey.shade600;
+    Color iconColor = Colors.grey.shade500;
+    BoxBorder? border;
+    double elevation = 0.5;
+
+    if (isOngoing) {
+      cardBackgroundColor = Theme.of(context).primaryColor.withOpacity(0.08);
+      titleColor = Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor; // Fallback
+      subtitleColor = Theme.of(context).primaryColor;
+      iconColor = Theme.of(context).primaryColor;
+      border = Border.all(color: Theme.of(context).primaryColor.withOpacity(0.6), width: 1.5);
+      elevation = 2.0;
+    } else if (isCompleted) {
+      cardBackgroundColor = Colors.transparent;
+      titleColor = Colors.grey.shade500;
+      subtitleColor = Colors.grey.shade400;
+      iconColor = Colors.grey.shade400;
+      border = Border.all(color: Colors.grey.shade300, width: 1);
+      elevation = 0.0;
+    }
+
+    return InkWell(
+      onTap: mode == TripMode.edit ? onTap : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: cardBackgroundColor,
+          borderRadius: BorderRadius.circular(16),
+          border: border,
+          boxShadow: elevation > 0 ? [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.08),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            )
+          ] : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: isOngoing ? Theme.of(context).primaryColor.withOpacity(0.15) : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                  Icons.location_on_outlined,
+                  color: iconColor,
+                  size: 26
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    activity.description,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
+                      decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+                      decorationColor: Colors.grey.shade400,
+                      decorationThickness: 1.5,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: activity.location != null && activity.location!.isNotEmpty ? 6 : 2),
+                  if (activity.location != null && activity.location!.isNotEmpty)
+                    Row(
+                      children: [
+                        Icon(Icons.pin_drop_outlined, size: 14, color: subtitleColor.withOpacity(0.8)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            activity.location!,
+                            style: TextStyle(fontSize: 13, color: subtitleColor),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  SizedBox(height: activity.time.isNotEmpty ? 6 : 2),
+                  if (activity.time.isNotEmpty)
+                    Row(
+                      children: [
+                        Icon(Icons.access_time_outlined, size: 14, color: subtitleColor.withOpacity(0.8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          activity.time,
+                          style: TextStyle(fontSize: 13, color: subtitleColor),
+                        ),
+                      ],
+                    ),
+
+                  if (mode == TripMode.travel) ...[
+                    const SizedBox(height: 10.0),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: ActivityStatus.values.map((s) {
+                        bool isCurrent = activity.status == s;
+                        String statusText;
+                        Color chipBgColor;
+                        Color chipLabelColor;
+                        BorderSide chipBorder = BorderSide.none;
+
+                        switch (s) {
+                          case ActivityStatus.pending:
+                            statusText = "待办";
+                            chipBgColor = isCurrent ? Colors.orange.shade100 : Colors.grey.shade100;
+                            chipLabelColor = isCurrent ? Colors.orange.shade800 : Colors.grey.shade600;
+                            if(isCurrent) chipBorder = BorderSide(color: Colors.orange.shade300);
+                            break;
+                          case ActivityStatus.ongoing:
+                            statusText = "进行中";
+                            chipBgColor = isCurrent ? Theme.of(context).primaryColor : Theme.of(context).primaryColor.withOpacity(0.1);
+                            chipLabelColor = isCurrent ? Colors.white : (Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor);
+                            if(isCurrent) chipBorder = BorderSide(color: Theme.of(context).primaryColor.withAlpha(150));
+                            break;
+                          case ActivityStatus.completed:
+                            statusText = "完成";
+                            chipBgColor = isCurrent ? Colors.green.shade400 : Colors.green.shade50;
+                            chipLabelColor = isCurrent ? Colors.white : Colors.green.shade700;
+                            if(isCurrent) chipBorder = BorderSide(color: Colors.green.shade600);
+                            break;
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: ActionChip(
+                            label: Text(statusText, style: TextStyle(fontSize: 11, color: chipLabelColor, fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
+                            backgroundColor: chipBgColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: chipBorder),
+                            pressElevation: 2,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
+                            onPressed: () {
+                              if (onStatusChange != null) onStatusChange!(s);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    )
+                  ] else if (mode == TripMode.edit) ...[
+                    const SizedBox(height: 8.0),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Icon(Icons.edit_note_outlined, color: Colors.grey.shade400, size: 20),
+                    )
+                  ]
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// _SliverAppBarDelegate 辅助类保持不变
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate({ required this.minHeight, required this.maxHeight, required this.child });
   final double minHeight;
   final double maxHeight;
   final Widget child;
@@ -845,14 +1149,11 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   double get maxExtent => max(maxHeight, minHeight);
   @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return SizedBox.expand(child: child);
   }
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return maxHeight != oldDelegate.maxHeight ||
-        minHeight != oldDelegate.minHeight ||
-        child != oldDelegate.child;
+    return maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
   }
 }
