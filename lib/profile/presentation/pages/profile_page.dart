@@ -43,7 +43,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    final Color scaffoldBackgroundColor = Colors.grey[50]!; // 更浅的背景
+    final Color scaffoldBackgroundColor = Colors.white; // 直接使用主题中的背景色
 
     return Scaffold(
       backgroundColor: scaffoldBackgroundColor,
