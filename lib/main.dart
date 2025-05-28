@@ -6,7 +6,6 @@ import 'dart:ui'; // For BackdropFilter
 // 确保这些页面的路径和名称与您的项目结构一致
 import 'package:tulele/trips/presentation/pages/my_trips_page.dart';
 import 'package:tulele/profile/presentation/pages/profile_page.dart';
-import 'package:tulele/trips/presentation/pages/create_trip_options_page.dart'; // 我们仍需此页的导航目标
 import 'package:tulele/ai/presentation/pages/ai_planner_page.dart';
 import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
 
