@@ -1,8 +1,11 @@
-// lib/ai_planner_page.dart (新建)
+// lib/ai/presentation/pages/ai_planner_page.dart
 import 'package:flutter/material.dart';
-import '../../../trips/presentation/pages/itinerary_editor_page.dart'; // 引入行程编辑页面
+// *** 修改点：导入新的 trip_detail_page.dart ***
+import '../../../trips/presentation/pages/trip_detail_page.dart'; // 确保路径正确
+import 'dart:math'; // 用于生成随机ID (如果需要为新行程生成ID)
 
-// 模拟消息模型
+
+// ChatMessage 类定义保持不变
 class ChatMessage {
   final String text;
   final bool isUserMessage;
@@ -52,18 +55,36 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
 
     setState(() {
       _messages.add(ChatMessage(text: text, isUserMessage: true));
-      // 模拟AI回复
       _addAiResponse(text);
     });
     _scrollToBottom();
   }
 
   void _addAiResponse(String userMessage) {
-    // 简单的模拟AI回复逻辑
     String aiTextResponse;
     bool hasSuggestions = false;
     List<String>? suggestions;
     bool showPlanButtons = false;
+
+    // 模拟的行程数据，当AI“生成”方案时会用到
+    Map<String, dynamic> mockTripDataForEditor = {
+      'name': 'AI规划的行程', // 默认名称，可以从对话中提取
+      'destination': '未知', // 可以从对话中提取
+      'tags': <String>[], // 可以从对话中提取
+      'days': [
+        // AI应该填充更具体的每日活动
+        {
+          'dayNumber': 1,
+          'date': DateTime.now(),
+          'title': '${DateTime.now().month}月${DateTime.now().day}日 (AI规划)',
+          'activities': [
+            {'id': 'ai_act1_${Random().nextInt(100)}', 'time': '上午', 'description': 'AI推荐活动1', 'location': 'AI推荐地点1'},
+            {'id': 'ai_act2_${Random().nextInt(100)}', 'time': '下午', 'description': 'AI推荐活动2', 'location': 'AI推荐地点2'},
+          ],
+          'notes': '这是AI为您初步规划的行程，您可以在编辑页面进行调整。'
+        }
+      ]
+    };
 
     if (userMessage.contains('三亚') && userMessage.contains('亲子')) {
       aiTextResponse = '好的，为您规划三亚5日亲子度假推荐：\n'
@@ -74,37 +95,47 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
           '这个方案您觉得怎么样？';
       hasSuggestions = true;
       suggestions = ['看起来不错，详细安排一下每天的行程', '修改预算', '换个酒店推荐'];
-      showPlanButtons = true; // 显示“采用方案”和“修改方案”
-    } else if (userMessage.contains('详细安排')) {
-      aiTextResponse = '好的，我这就为您详细规划每一天的行程安排... (此处将生成详细日程)';
-      // 实际应用中，这里会生成更详细的日程数据
-      // 为了演示，我们直接导航到编辑页，并传递一个模拟的行程名称
-      Future.delayed(const Duration(seconds: 1), () {
-        final mockTripData = {
-          'name': 'AI规划的三亚亲子游',
-          // 其他信息可以从之前的对话中提取或让用户在编辑页补充
-          'destination': '三亚',
-          'tags': ['亲子', '海岛度假'],
-          'days': [
-            {
-              'dayNumber': 1, 'date': DateTime.now(), 'title': '${DateTime.now().month}月${DateTime.now().day}日, 星期X',
-              'activities': [
-                {'time': '09:00', 'description': '抵达三亚，前往酒店'},
-                {'time': '14:00', 'description': '亚龙湾沙滩'},
-              ]
-            },
-            {
-              'dayNumber': 2, 'date': DateTime.now().add(const Duration(days:1)), 'title': '${DateTime.now().add(const Duration(days:1)).month}月${DateTime.now().add(const Duration(days:1)).day}日, 星期Y',
-              'activities': [
-                {'time': '10:00', 'description': '蜈支洲岛'},
-                {'time': '18:00', 'description': '海鲜晚餐'},
-              ]
-            }
-          ]
-        };
+      showPlanButtons = true;
+      // 更新模拟数据
+      mockTripDataForEditor['name'] = 'AI规划的三亚亲子游';
+      mockTripDataForEditor['destination'] = '三亚';
+      (mockTripDataForEditor['tags'] as List<String>).addAll(['亲子', '海岛度假']);
+      // 可以更细化mockTripDataForEditor['days']的内容
+      mockTripDataForEditor['days'] = [
+        {
+          'dayNumber': 1, 'date': DateTime.now(), 'title': '抵达与海滩',
+          'activities': [
+            {'id': 'sanya_act1_${Random().nextInt(100)}', 'time': '09:00', 'description': '抵达三亚，前往酒店'},
+            {'id': 'sanya_act2_${Random().nextInt(100)}', 'time': '14:00', 'description': '亚龙湾沙滩'},
+          ], 'notes': '享受阳光沙滩！'
+        },
+        {
+          'dayNumber': 2, 'date': DateTime.now().add(const Duration(days:1)), 'title': '海岛探索',
+          'activities': [
+            {'id': 'sanya_act3_${Random().nextInt(100)}', 'time': '10:00', 'description': '蜈支洲岛一日游'},
+            {'id': 'sanya_act4_${Random().nextInt(100)}', 'time': '18:00', 'description': '品尝当地海鲜'},
+          ], 'notes': '注意防晒和补水。'
+        }
+        // 可以按需添加更多天数
+      ];
+
+
+    } else if (userMessage.contains('详细安排') || userMessage.contains('采用方案')) { // 包含采用方案的逻辑
+      aiTextResponse = '好的，我这就为您生成详细的行程计划，您可以稍后在编辑页面进行调整。';
+
+      final String newTripId = 'ai_trip_${DateTime.now().millisecondsSinceEpoch}';
+
+      // 模拟用户确认后，准备跳转到行程详情页的编辑模式
+      Future.delayed(const Duration(milliseconds: 500), () { // 短暂延迟模拟AI处理
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => ItineraryEditorPage(tripData: mockTripData)),
+          MaterialPageRoute(
+              builder: (context) => TripDetailPage(
+                tripId: newTripId, // 传递新生成的ID
+                initialMode: TripMode.edit, // 以编辑模式打开
+                newTripInitialData: mockTripDataForEditor, // 传递AI生成的初始数据
+              )
+          ),
         );
       });
 
@@ -126,7 +157,7 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
         suggestions: suggestions,
       ));
       if (showPlanButtons) {
-        _messages.add(ChatMessage(text: "_PLAN_BUTTONS_", isUserMessage: false)); // 特殊标记用于显示按钮
+        _messages.add(ChatMessage(text: "_PLAN_BUTTONS_", isUserMessage: false));
       }
     });
   }
@@ -163,39 +194,17 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.end, // 按钮也靠右，因为是AI回复后的操作
           children: [
             TextButton(
               onPressed: () {
-                // 导航到编辑页面，并传递AI生成的初步方案
-                // 此处为模拟，实际应从AI获取更完整的方案数据
-                final mockTripData = {
-                  'name': 'AI规划的三亚亲子游',
-                  'destination': '三亚',
-                  'tags': ['亲子', '海岛度假'],
-                  // ... 更多AI生成的行程数据
-                  'days': [
-                    {
-                      'dayNumber': 1, 'date': DateTime.now(), 'title': '${DateTime.now().month}月${DateTime.now().day}日, 星期X',
-                      'activities': [
-                        {'time': '09:00', 'description': '抵达三亚，前往酒店'},
-                        {'time': '14:00', 'description': '亚龙湾沙滩'},
-                      ]
-                    },
-                    // ...更多天数
-                  ]
-                };
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => ItineraryEditorPage(tripData: mockTripData)),
-                );
+                _handleSubmitted("采用方案"); // 触发采用方案的逻辑
               },
               child: const Text('采用方案'),
             ),
             const SizedBox(width: 8),
             OutlinedButton(
               onPressed: () {
-                // 触发修改逻辑，比如让用户重新输入或选择修改点
                 _handleSubmitted("我想修改方案");
               },
               child: const Text('修改方案'),
@@ -204,7 +213,6 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
         ),
       );
     }
-
 
     return Column(
       crossAxisAlignment: align,
@@ -232,7 +240,7 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
             child: Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              alignment: WrapAlignment.start, // AI建议靠左
+              alignment: message.isUserMessage ? WrapAlignment.end : WrapAlignment.start,
               children: message.suggestions!.map((suggestion) {
                 return ActionChip(
                   label: Text(suggestion),
@@ -284,12 +292,12 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
 
   Widget _buildTextComposer() {
     return IconTheme(
-      data: IconThemeData(color: Theme.of(context).hintColor),
+      data: IconThemeData(color: Theme.of(context).hintColor), // 使用主题强调色
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
         padding: const EdgeInsets.symmetric(horizontal: 8.0),
         decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.white, // 输入框背景白色
             borderRadius: BorderRadius.circular(24.0),
             boxShadow: [
               BoxShadow(
@@ -312,13 +320,13 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
                 ),
                 style: const TextStyle(fontSize: 16),
                 minLines: 1,
-                maxLines: 5,
+                maxLines: 5, // 允许多行输入
               ),
             ),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4.0),
               child: IconButton(
-                  icon: Icon(Icons.send, color: Theme.of(context).primaryColor),
+                  icon: Icon(Icons.send, color: Theme.of(context).primaryColor), // 发送按钮用主题色
                   onPressed: () => _handleSubmitted(_textController.text)),
             ),
           ],

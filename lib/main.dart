@@ -4,13 +4,39 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'trips/presentation/pages/my_trips_page.dart';
 import 'market/presentation/pages/solution_market_page.dart';
 import 'profile/presentation/pages/profile_page.dart';
+import 'core/services/user_service.dart';
+import 'auth/presentation/pages/login_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化用户服务
+  await UserService().initialize();
+  
   runApp(const MyAppEntry());
 }
 
-class MyAppEntry extends StatelessWidget {
+class MyAppEntry extends StatefulWidget {
   const MyAppEntry({super.key});
+
+  @override
+  State<MyAppEntry> createState() => _MyAppEntryState();
+}
+
+class _MyAppEntryState extends State<MyAppEntry> {
+  final _userService = UserService();
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    // 监听用户状态变化
+    _userService.userStream.listen((user) {
+      setState(() {
+        // 用户状态发生变化，重新构建UI
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,9 +176,32 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
   ];
 
   void _onItemTapped(int index) {
+    // 如果点击的是"我的"页面，需要检查是否已登录
+    if (index == 2 && UserService().currentUser == null) {
+      // 未登录，弹出登录页面
+      _showLoginPage();
+      return;
+    }
+    
     setState(() {
       _selectedIndex = index;
     });
+  }
+  
+  // 显示登录页面
+  Future<void> _showLoginPage() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => const LoginPage(),
+      ),
+    );
+    
+    // 如果登录成功，切换到"我的"页面
+    if (result == true) {
+      setState(() {
+        _selectedIndex = 2;
+      });
+    }
   }
 
   @override
