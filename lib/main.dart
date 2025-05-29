@@ -9,8 +9,107 @@ import 'package:tulele/profile/presentation/pages/profile_page.dart';
 import 'package:tulele/ai/presentation/pages/ai_planner_page.dart';
 import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
 
+// 导入 flutter_local_notifications
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-void main() {
+// 1. 创建 FlutterLocalNotificationsPlugin 实例
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+// 2. 处理后台通知点击 (这是一个顶级函数或静态方法)
+@pragma('vm:entry-point') // 确保此回调在后台独立运行
+void notificationTapBackground(NotificationResponse notificationResponse) {
+  // 此处代码应尽量简单，例如记录日志或进行简单的后台处理
+  debugPrint('(Background) notification tapped: ${notificationResponse.payload}');
+  if (notificationResponse.actionId == 'ok_action') {
+    debugPrint('Background OK action tapped');
+    // 在这里可以处理“好的”按钮在后台被点击的逻辑
+  } else if (notificationResponse.actionId == 'cancel_action') {
+    debugPrint('Background Cancel action tapped');
+    // 在这里可以处理“取消”按钮在后台被点击的逻辑
+    // 例如取消一个后台任务等
+  }
+}
+
+
+Future<void> main() async {
+  // 确保 Flutter 环境已初始化
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 3. 初始化通知设置
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher'); // 确保你有这个图标
+
+  final DarwinInitializationSettings initializationSettingsDarwin =
+      DarwinInitializationSettings(
+    requestAlertPermission: true, // 请求通知权限
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+    // onDidReceiveLocalNotification: // <--- 移除这一整段回调
+    //     (int id, String? title, String? body, String? payload) async {
+    //   // iOS 10 以下版本的旧回调
+    // },
+    // 为 iOS 通知操作定义类别
+    notificationCategories: [
+      DarwinNotificationCategory(
+        'trip_started_category', // 通知的类别标识符
+        actions: <DarwinNotificationAction>[
+          DarwinNotificationAction.plain('ok_action', '好的'),
+          DarwinNotificationAction.plain('cancel_action', '取消', options: {
+            DarwinNotificationActionOption.destructive, // 将“取消”标记为破坏性操作 (可选)
+          }),
+        ],
+        options: <DarwinNotificationCategoryOption>{
+          DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+        },
+      )
+    ]
+  );
+
+  final InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsDarwin,
+  );
+
+  // 4. 初始化插件
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse:
+        (NotificationResponse notificationResponse) async {
+      debugPrint('Notification tapped: ${notificationResponse.payload}');
+      if (notificationResponse.actionId == 'ok_action') {
+        debugPrint('OK action tapped');
+        // 在这里处理“好的”按钮被点击的逻辑 (应用在前台或从后台恢复时)
+      } else if (notificationResponse.actionId == 'cancel_action') {
+        debugPrint('Cancel action tapped');
+        // 在这里处理“取消”按钮被点击的逻辑 (应用在前台或从后台恢复时)
+        // 例如可以尝试取消通知
+        await flutterLocalNotificationsPlugin.cancel(notificationResponse.id ?? 0);
+      }
+      // 你可以在这里根据 notificationResponse.payload 进行页面导航等操作
+    },
+    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+  );
+
+  // 5. (可选但推荐) 应用启动时创建通知渠道 (Android 8.0+)
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'trip_status_channel', // 渠道 ID
+    '行程状态通知', // 渠道名称
+    description: '用于通知行程的开始、进行中和结束状态。', // 渠道描述
+    importance: Importance.max,
+    playSound: true,
+  );
+  // 尝试创建渠道，如果插件未正确解析 Android 特定实现，则跳过
+  try {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+  } catch (e) {
+      debugPrint('Error creating notification channel: $e');
+  }
+
+
   runApp(const MyAppEntry());
 }
 
@@ -151,6 +250,38 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
     MyTripsPage(),
     ProfilePage(),
   ];
+
+  @override
+  void initState() { // 新增 initState 来请求权限
+    super.initState();
+    _requestNotificationPermissions();
+  }
+
+  Future<void> _requestNotificationPermissions() async {
+    // 请求 Android 和 iOS 通知权限
+    if (Theme.of(context).platform == TargetPlatform.iOS) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
+    } else if (Theme.of(context).platform == TargetPlatform.android) {
+      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+          flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      try {
+        await androidImplementation?.requestNotificationsPermission(); // Android 13+
+        // 你也可以在这里请求精确闹钟权限，如果需要的话：
+        // await androidImplementation?.requestExactAlarmsPermission();
+      } catch (e) {
+        debugPrint('Error requesting Android notification permissions: $e');
+      }
+    }
+  }
+
 
   void _onItemTapped(int index) {
     setState(() {
