@@ -9,9 +9,14 @@ class User:
     """
     
     @staticmethod
+    def generate_password_hash(password):
+        """生成密码哈希"""
+        return generate_password_hash(password)
+    
+    @staticmethod
     def create_user(mongo, username, email, password):
         """创建新用户"""
-        password_hash = generate_password_hash(password)
+        password_hash = User.generate_password_hash(password)
         now = datetime.datetime.now()
         
         user_data = {
@@ -59,4 +64,4 @@ class User:
             'email': user['email'],
             'created_at': user['created_at'].strftime('%Y-%m-%d %H:%M:%S') if 'created_at' in user else None,
             'updated_at': user['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if 'updated_at' in user else None
-        }
+        } 

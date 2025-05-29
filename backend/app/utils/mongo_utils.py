@@ -47,4 +47,14 @@ def init_mongo_indexes(mongo):
     create_mongo_index(mongo, 'users', [('username', 1)], {'unique': True})
     create_mongo_index(mongo, 'users', [('email', 1)], {'unique': True})
     
-    # 可根据需要添加其他集合的索引
+    # 旅行规划索引
+    create_mongo_index(mongo, 'tripPlans', [('name', 1)])
+    create_mongo_index(mongo, 'tripPlans', [('destination', 1)])
+    create_mongo_index(mongo, 'tripPlans', [('tags', 1)])
+    create_mongo_index(mongo, 'tripPlans', [('created_at', -1)])
+    
+    # 用户旅行方案索引
+    create_mongo_index(mongo, 'userTrips', [('plan_id', 1)])
+    create_mongo_index(mongo, 'userTrips', [('members.userId', 1)])
+    create_mongo_index(mongo, 'userTrips', [('status', 1)])
+    create_mongo_index(mongo, 'userTrips', [('created_at', -1)])

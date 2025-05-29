@@ -7,3 +7,4 @@ python-dotenv==1.0.0
 requests==2.31.0
 pymongo==4.5.0
 Werkzeug==2.3.6
+Flask-JWT-Extended==4.5.2
