@@ -1,0 +1,9 @@
+Flask==2.3.2
+Flask-Cors==4.0.0
+Flask-RESTful==0.3.10
+Flask-PyMongo==2.3.0
+PyJWT==2.8.0
+python-dotenv==1.0.0
+requests==2.31.0
+pymongo==4.5.0
+Werkzeug==2.3.6 
