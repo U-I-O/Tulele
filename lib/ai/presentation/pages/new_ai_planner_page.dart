@@ -41,7 +41,7 @@ class _NewAiPlannerPageState extends State<NewAiPlannerPage> {
 
     final response = await http.post(
       Uri.parse('https://api.deepseek.com/v1/planner'),
-      headers: {'Authorization': 'Bearer sk-5ed287ed4abc4f9d86bd4c8d4251b7dd'},
+      headers: {'Authorization': 'Bearer xXXXXXXXXXXXXXXXXXX'},
       body: json.encode({'query': text}),
     );
 
