@@ -1,6 +1,7 @@
 // lib/ai/presentation/pages/ai_planner_page.dart
 import 'package:flutter/material.dart';
 // *** 修改点：导入新的 trip_detail_page.dart ***
+import '../../../trips/presentation/viewmodels/trip_detail_viewmodel.dart'; // 确保路径正确
 import '../../../trips/presentation/pages/trip_detail_page.dart'; // 确保路径正确
 import 'dart:math'; // 用于生成随机ID (如果需要为新行程生成ID)
 

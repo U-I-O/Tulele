@@ -900,7 +900,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      // backgroundColor: Colors.white, // 已在主题中设置
       body: SafeArea(
         top: false,
         bottom: false,
@@ -916,8 +916,8 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                         floating: false,
                         pinned: true,
                         stretch: true,
-                        backgroundColor: Colors.white,
-                        elevation: 0,
+                        backgroundColor: Colors.white, // AppBar 背景白色
+                        elevation: 0, // AppBar 阴影去除
                         automaticallyImplyLeading: true,
                         iconTheme: IconThemeData(color: Colors.grey[700]),
                         flexibleSpace: FlexibleSpaceBar(
@@ -925,7 +925,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                           background: _buildCoverAndTitleSectionWidget(context),
                         ),
                       ),
-                      _buildBottomViewSwitcherBarSliver(), // Moved here
+                      _buildBottomViewSwitcherBarSliver(),
                       _buildDateCapsuleBarSliver(),
                       SliverFillRemaining(
                         hasScrollBody: true,
@@ -934,7 +934,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                     ],
                   ),
                 ),
-                // Removed _buildBottomViewSwitcherBar() from here
+                // _buildBottomViewSwitcherBar(), // 已移到 Sliver 中
               ],
             ),
             if (_currentMode == TripMode.edit || _currentMode == TripMode.travel)
