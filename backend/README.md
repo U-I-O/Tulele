@@ -1,6 +1,12 @@
-# Flask 后端服务
+# Flask 后端服务 (途乐乐)
 
-这是为Flutter应用提供的Flask后端服务，使用MongoDB作为数据库。
+这是为 Flutter 应用"途乐乐"提供的 Flask 后端服务，使用 MongoDB 作为数据库。
+
+## 核心数据模型关系
+
+* **TripPlan (旅行规划)**: 存储可复用的、核心的行程规划内容，如目的地、天数、每日活动等。可以被视为行程的"蓝图"或"模板"。存储在 `tripPlans` 集合中。
+* **UserTrip (用户旅行方案)**: 代表用户对一个 `TripPlan` 的具体使用实例或一个从头创建的个人行程记录。它通过 `plan_id` 字段关联到一个 `TripPlan` 文档，并包含用户特定的信息，如团队成员、个人票务、行程笔记、发布状态 (`publish_status`) 和旅行状态 (`travel_status`)。存储在 `userTrips` 集合中。
+* **数据获取**: 当客户端请求 `UserTrip` 数据时，API 通常会通过数据库的 `$lookup` 操作将关联的 `TripPlan` 的详细信息嵌入到 `UserTrip` 对象中（例如，作为一个名为 `plan_details` 的字段），以便前端高效获取数据。
 
 ## 环境要求
 
@@ -10,22 +16,17 @@
 ## 安装步骤
 
 1. 安装依赖包：
-
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 2. 创建环境变量文件：
+   将 `.env-example` 复制为 `.env` 并根据需要修改配置。
+   ```bash
+   cp .env-example .env
+   ```
 
-将`.env-example`复制为`.env`并根据需要修改配置。
-
-```bash
-cp .env-example .env
-```
-
-3. 确保MongoDB服务已启动：
-
-默认情况下，应用会连接到`localhost:27017`上的MongoDB服务。
+3. 确保 MongoDB 服务已启动（默认连接 `localhost:27017`）。
 
 ## 运行服务
 
@@ -33,157 +34,306 @@ cp .env-example .env
 python run.py
 ```
 
-或者使用Flask命令：
+或者使用 Flask 命令：
 
 ```bash
 flask run
 ```
 
-## API端点说明
+## API 端点说明
 
-### 测试连接
-- GET `/api/test`：测试API连接是否正常
+### 认证 (Auth)
 
-### 用户认证
-- POST `/api/auth/register`：用户注册，需要提供username、email、password字段
-- POST `/api/auth/login`：用户登录，需要提供username/email和password字段
-- POST `/api/auth/refresh`：刷新访问令牌，需要refresh_token
-- GET `/api/auth/me`：获取当前用户个人资料，需要访问令牌
-- PUT `/api/auth/update-profile`：更新用户个人资料，需要访问令牌
-- POST `/api/auth/change-password`：修改密码，需要old_password和new_password字段
-- POST `/api/auth/logout`：用户登出（前端实现）
+#### POST /api/auth/register
+用户注册。
 
-### 用户管理
-- GET `/api/users`：获取所有用户
-- POST `/api/users`：创建新用户，需要提供username、email、password字段
+请求体: `{ "username": "str", "email": "str", "password": "str" }`
 
-### 旅行规划 (TripPlan)
-- GET `/api/trips/plans`：获取旅行规划列表，支持分页和筛选
-- GET `/api/trips/plans/<plan_id>`：获取特定旅行规划的详情
-- POST `/api/trips/plans`：创建新的旅行规划
-- PUT `/api/trips/plans/<plan_id>`：更新旅行规划
-- DELETE `/api/trips/plans/<plan_id>`：删除旅行规划
+#### POST /api/auth/login
+用户登录。
+
+请求体: `{ "username_or_email": "str", "password": "str" }`
+
+#### POST /api/auth/refresh
+刷新访问令牌。
+
+头部: `Authorization: Bearer <refresh_token>`
+
+#### GET /api/auth/me
+获取当前用户信息。
+
+头部: `Authorization: Bearer <access_token>`
+
+#### PUT /api/auth/update-profile
+更新用户信息。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体: 包含要更新的字段 (例如, bio, avatarUrl)。
+
+#### POST /api/auth/change-password
+修改密码。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体: `{ "old_password": "str", "new_password": "str" }`
+
+### 旅行规划模板 (TripPlan)
+
+管理可复用的行程计划模板。
+
+#### GET /api/trips/plans
+获取旅行规划模板列表 (例如，用于方案市场的"发现模板"功能)。
+
+查询参数:
+- `limit` (int, 默认 20): 每页数量。
+- `skip` (int, 默认 0): 跳过数量，用于分页。
+- `destination` (str): 按目的地模糊搜索。
+- `tags` (str, 逗号分隔): 按标签筛选 (例如, tags=亲子,海岛)。
+- `sort_by` (str): 排序依据 (例如, rating, updated_at, popularity)。
+- `isPublicTemplate=true` (bool, 可选): 筛选公共模板。
+
+#### GET /api/trips/plans/<plan_id>
+获取特定旅行规划模板的详情。
+
+#### POST /api/trips/plans
+创建新的旅行规划模板。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体: TripPlan 对象 (包含 name, origin, destination, startDate, endDate, days 等)。
+
+成功响应: 201 Created，返回创建的 TripPlan 对象 (包含 _id)。
+
+#### PUT /api/trips/plans/<plan_id>
+更新现有的旅行规划模板的核心内容。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体: 包含要更新的 TripPlan 字段。
+
+#### DELETE /api/trips/plans/<plan_id>
+删除旅行规划模板。
+
+头部: `Authorization: Bearer <access_token>`
+
+注意: 如果有 UserTrip 正在引用此 plan_id，可能需要特殊处理（如不允许删除或软删除）。
 
 ### 用户旅行方案 (UserTrip)
-- GET `/api/trips/user-trips?user_id=xxx`：获取用户的旅行方案列表
-- GET `/api/trips/user-trips/<trip_id>`：获取特定用户旅行方案的详情
-- POST `/api/trips/user-trips`：创建新的用户旅行方案
-- PUT `/api/trips/user-trips/<trip_id>`：更新用户旅行方案
-- POST `/api/trips/user-trips/<trip_id>/members`：添加旅行团队成员
-- POST `/api/trips/user-trips/<trip_id>/messages`：添加旅行消息
-- POST `/api/trips/user-trips/<trip_id>/tickets`：添加旅行票务
-- POST `/api/trips/user-trips/<trip_id>/notes`：添加旅行笔记
 
-## JWT认证说明
+管理用户具体的行程实例。
 
-本API使用JWT（JSON Web Token）进行用户认证。客户端需要：
+#### GET /api/trips/user-trips
+获取用户旅行方案列表。
 
-1. 调用登录或注册接口获取`access_token`和`refresh_token`
-2. 在后续请求的头部添加`Authorization: Bearer <access_token>`
-3. 当`access_token`过期时，使用`refresh_token`调用刷新接口获取新的`access_token`
-4. 登出时，前端只需要删除保存的令牌
+头部: `Authorization: Bearer <access_token>` (通常需要)
 
+**场景1**: 获取当前用户的行程 (我的行程夹)
 
-## 数据模型
+查询参数: `user_id=<current_user_id>` (必需), `populate_plan=true` (可选, 默认true)。
 
-### TripPlan (旅行规划)
+**场景2**: 获取方案市场的已发布行程
+
+查询参数: `publish_status=published` (必需), `populate_plan=true` (默认true), limit, skip, destination (基于plan_details), tags (基于plan_details), sort_by (如 rating, popularity - 这些字段可能需要在UserTrip中也存在或通过聚合计算)。
+
+#### GET /api/trips/user-trips/<user_trip_id>
+获取特定用户旅行方案的详情。
+
+头部: `Authorization: Bearer <access_token>`
+
+查询参数: `populate_plan=true` (可选, 默认true)。
+
+#### POST /api/trips/user-trips
+创建新的用户旅行方案。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体:
+
+**A) 基于现有 TripPlan 模板**:
+
 ```json
 {
-  "id": "5f9d88b9e8a8f31a5c7a9b5a",
-  "name": "北京三日游",
-  "origin": "上海",
-  "destination": "北京",
-  "startDate": "2023-06-01",
-  "endDate": "2023-06-03",
-  "tags": ["历史", "文化", "美食"],
-  "description": "北京三日精华游，体验历史与现代交织的首都风采",
-  "coverImage": "https://example.com/images/beijing_cover.jpg",
-  "days": [
-    {
-      "date": "2023-06-01",
-      "activities": [
-        {
-          "id": "act1",
-          "title": "参观故宫",
-          "location": "故宫博物院",
-          "startTime": "09:00",
-          "endTime": "12:00",
-          "note": "记得带身份证",
-          "transportation": "地铁"
-        },
-        {
-          "id": "act2",
-          "title": "午餐",
-          "location": "簋街",
-          "startTime": "12:30",
-          "endTime": "14:00",
-          "note": "尝试北京特色小吃",
-          "transportation": "打车"
-        }
-      ]
-    }
-  ]
+  "plan_id": "existing_trip_plan_object_id",
+  "creator_id": "current_user_id", // 由后端从JWT获取或前端明确提供
+  "user_trip_name_override": "我的三亚之旅", // 可选
+  "publish_status": "draft", // 可选, 默认 'draft'
+  "travel_status": "planning", // 可选, 默认 'planning'
+  "members": [/* 初始成员, 创建者会自动加入 */]
 }
 ```
 
-### UserTrip (用户旅行方案)
+**B) 从头创建 (同时定义计划内容)**:
+
 ```json
 {
-  "id": "5f9d88b9e8a8f31a5c7a9b5b",
-  "plan_id": "5f9d88b9e8a8f31a5c7a9b5a",
+  "creator_id": "current_user_id",
+  // TripPlan 的所有字段:
+  "name": "我的全新日本自由行",
+  "destination": "日本东京",
+  "startDate": "2025-10-01",
+  "endDate": "2025-10-07",
+  "tags": ["美食", "购物"],
+  "days": [ /* ...每日活动详情... */ ],
+  // UserTrip 的其他字段:
+  "publish_status": "draft",
+  "members": []
+}
+```
+
+在此情况下，后端会先创建一个新的 TripPlan，然后用其 ID 创建 UserTrip。
+
+成功响应: 201 Created，返回创建的 UserTrip 对象 (包含 _id 和 plan_details)。
+
+#### PUT /api/trips/user-trips/<user_trip_id>
+更新用户旅行方案的特定属性。
+
+头部: `Authorization: Bearer <access_token>`
+
+请求体: 包含要更新的 UserTrip 字段，如 user_trip_name_override, publish_status, travel_status。不用于修改核心计划内容（天数/活动），核心计划内容请通过 PUT /api/trips/plans/<plan_id> 更新。
+
+#### DELETE /api/trips/user-trips/<user_trip_id>
+删除用户旅行方案。
+
+头部: `Authorization: Bearer <access_token>`
+
+### UserTrip 子资源
+
+#### POST /api/trips/user-trips/<user_trip_id>/members
+添加团队成员。
+
+请求体: `{ "userId": "str", "name": "str", "role": "str" }`
+
+#### POST /api/trips/user-trips/<user_trip_id>/messages
+添加消息。
+
+请求体: `{ "senderId": "str (通常是当前用户)", "content": "str", "type": "str" }`
+
+#### POST /api/trips/user-trips/<user_trip_id>/tickets
+添加票务。
+
+请求体: `{ "type": "str", "title": "str", "details": "str", ... }`
+
+#### POST /api/trips/user-trips/<user_trip_id>/notes
+添加行程实例的笔记。
+
+请求体: `{ "content": "str" }`
+
+## JWT认证
+
+API 使用 JWT 进行用户认证。客户端需在请求头中添加 `Authorization: Bearer <access_token>`。
+
+## 数据模型 (主要结构)
+
+### User (用户 - users 集合)
+
+```json
+{
+  "_id": "ObjectId(...)",
+  "username": "string",
+  "email": "string (unique)",
+  "password_hash": "string",
+  "avatarUrl": "string (optional)",
+  "bio": "string (optional)",
+  "created_at": "ISODateTime",
+  "updated_at": "ISODateTime"
+}
+```
+
+### TripPlan (旅行规划核心 - tripPlans 集合)
+
+```json
+{
+  "_id": "ObjectId(...)",
+  "name": "string (行程规划名称/模板名称)",
+  "origin": "string (可选, 出发地)",
+  "destination": "string (可选, 主要目的地)",
+  "startDate": "ISODateTime (可选, YYYY-MM-DD)",
+  "endDate": "ISODateTime (可选, YYYY-MM-DD)",
+  "tags": ["string"],
+  "description": "string (可选, 行程简介)",
+  "coverImage": "string (可选, URL)",
+  "days": [
+    {
+      "day_number": "number (可选, 第几天)",
+      "date": "ISODateTime (可选, YYYY-MM-DD)",
+      "activities": [
+        {
+          "id": "string (可选, 活动的唯一标识, 便于更新)",
+          "title": "string (活动标题/描述)",
+          "location": "string (可选)",
+          "startTime": "string (可选, HH:MM)",
+          "endTime": "string (可选, HH:MM)",
+          "note": "string (可选, 活动备注)",
+          "transportation": "string (可选, 到下一活动的交通)"
+        }
+      ],
+      "notes": "string (可选, 当日行程备注)"
+    }
+  ],
+  "creator_id": "ObjectId (可选, 模板创建者用户ID)",
+  "isPublicTemplate": "boolean (可选, 是否为公开模板)",
+  "rating": "number (可选, 模板评分)",
+  "reviewCount": "number (可选, 模板评论数)",
+  "price_if_published_by_creator": "number (可选, 模板的建议售价)",
+  "created_at": "ISODateTime",
+  "updated_at": "ISODateTime"
+}
+```
+
+### UserTrip (用户旅行方案实例 - userTrips 集合)
+
+```json
+{
+  "_id": "ObjectId(...)",
+  "plan_id": "ObjectId (关联到 tripPlans._id)",
+  "creator_id": "ObjectId (创建此 UserTrip 实例的用户ID)",
+  "creator_name": "string (反规范化, 创建者用户名)",
+  "creator_avatar": "string (反规范化, 创建者头像URL)",
+  "user_trip_name_override": "string (可选, 用户对此行程实例的自定义名称)",
   "members": [
     {
-      "userId": "user1",
-      "name": "张三",
-      "avatarUrl": "https://example.com/avatar1.jpg",
-      "role": "leader"
+      "userId": "ObjectId (成员的用户ID)",
+      "name": "string (成员名称)",
+      "avatarUrl": "string (可选, 成员头像)",
+      "role": "string (如 'owner', 'editor', 'viewer')"
     }
   ],
   "messages": [
     {
-      "id": "msg1",
-      "senderId": "system",
-      "content": "行程已创建",
-      "timestamp": "2023-05-20T10:00:00",
-      "type": "system"
+      "id": "string (消息ID)",
+      "senderId": "ObjectId (发送者用户ID)",
+      "content": "string",
+      "timestamp": "ISODateTime",
+      "type": "string (如 'text', 'image', 'system')"
     }
   ],
   "tickets": [
     {
-      "id": "ticket1",
-      "type": "flight",
-      "title": "上海-北京航班",
-      "code": "MU5137",
-      "date": "2023-06-01",
-      "details": "浦东机场T2 10:00起飞"
+      "id": "string (票务ID)",
+      "type": "string (如 'flight', 'hotel', 'train', 'event')",
+      "title": "string",
+      "code": "string (可选, 票号/预订号)",
+      "date": "string (可选, YYYY-MM-DD 或 ISODateTime)",
+      "details": "string (可选, 更多详情)"
     }
   ],
-  "status": "planning",
-  "feeds": [
-    {
-      "id": "feed1",
-      "content": "北京天气预报：晴，18-25°C",
-      "timestamp": "2023-05-20T10:05:00",
-      "type": "weather"
-    }
-  ],
-  "notes": [
-    {
-      "id": "note1",
-      "content": "记得带充电宝",
-      "timestamp": "2023-05-20T10:10:00"
-    }
-  ]
-}
-```
+  "feeds": [ /* 动态信息流对象数组 */ ],
+  "notes": [ /* 行程实例级别的笔记对象数组 */ ],
+  "publish_status": "string ('draft', 'pending_review', 'published', 'rejected', 'archived')",
+  "travel_status": "string ('planning', 'traveling', 'completed')",
+  "price_when_published": "number (可选, 如果此 UserTrip 发布到市场，用户设定的价格)",
+  "user_rating_for_plan": "number (可选, 用户对此计划内容的个人评分)",
+  "user_review_for_plan": "string (可选, 用户对此计划内容的个人评价)",
+  "created_at": "ISODateTime",
+  "updated_at": "ISODateTime",
 
-### User (用户)
-```json
-{
-  "id": "5f9d88b9e8a8f31a5c7a9b5c",
-  "username": "zhangsan",
-  "email": "zhangsan@example.com",
-  "created_at": "2023-05-20 10:00:00",
-  "updated_at": "2023-05-20 10:00:00"
+  // 当API返回且 populate_plan=true 时，会包含此字段:
+  "plan_details": { 
+    // TripPlan 文档的完整内容 (除了 _id)
+    "name": "北京三日游计划", 
+    // ... TripPlan 的其他所有字段 ...
+  }
 }
 ```
+        

@@ -9,7 +9,7 @@ from . import api
 from .. import mongo
 from ..models.user import User
 from ..utils.auth_utils import authenticate_user, generate_tokens
-from ..utils.mongo_utils import parse_mongo_doc
+from ..utils.type_parsers import parse_mongo_doc
 
 @api.route('/auth/register', methods=['POST'])
 def register():
