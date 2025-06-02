@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:ui'; // For BackdropFilter
+import 'dart:io'; // For Platform check
 
 // 确保这些页面的路径和名称与您的项目结构一致
 import 'package:tulele/trips/presentation/pages/my_trips_page.dart';
@@ -9,117 +10,69 @@ import 'package:tulele/profile/presentation/pages/profile_page.dart';
 import 'package:tulele/ai/presentation/pages/ai_planner_page.dart';
 import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
 
-// 导入 flutter_local_notifications
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// 导入封装好的 NotificationService
+import 'package:tulele/core/services/notification_service.dart';
+// 导入新的交互服务和 NotificationResponse (如果顶级回调中需要)
+import 'package:tulele/core/services/notification_interaction_service.dart';
+import 'package:tulele/core/services/notification_interaction_service.dart' 
+    show notificationTapBackgroundCallback;
 
-// 1. 创建 FlutterLocalNotificationsPlugin 实例
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
 
-// 2. 处理后台通知点击 (这是一个顶级函数或静态方法)
-@pragma('vm:entry-point') // 确保此回调在后台独立运行
-void notificationTapBackground(NotificationResponse notificationResponse) {
-  // 此处代码应尽量简单，例如记录日志或进行简单的后台处理
-  debugPrint('(Background) notification tapped: ${notificationResponse.payload}');
-  if (notificationResponse.actionId == 'ok_action') {
-    debugPrint('Background OK action tapped');
-    // 在这里可以处理“好的”按钮在后台被点击的逻辑
-  } else if (notificationResponse.actionId == 'cancel_action') {
-    debugPrint('Background Cancel action tapped');
-    // 在这里可以处理“取消”按钮在后台被点击的逻辑
-    // 例如取消一个后台任务等
-  }
-}
+// 全局 NotificationInteractionService 实例
+// 注意：NotificationService 实例现在由 NotificationInteractionService 内部创建或接收
+// 因此我们只需要一个 NotificationInteractionService 的全局实例或通过依赖注入管理
+late NotificationInteractionService notificationInteractionService;
+
+// 新增：为 MaterialApp 和 NotificationInteractionService 创建一个全局 navigatorKey
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 
 
 Future<void> main() async {
-  // 确保 Flutter 环境已初始化
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 3. 初始化通知设置
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher'); // 确保你有这个图标
-
-  final DarwinInitializationSettings initializationSettingsDarwin =
-      DarwinInitializationSettings(
-    requestAlertPermission: true, // 请求通知权限
-    requestBadgePermission: true,
-    requestSoundPermission: true,
-    // onDidReceiveLocalNotification: // <--- 移除这一整段回调
-    //     (int id, String? title, String? body, String? payload) async {
-    //   // iOS 10 以下版本的旧回调
-    // },
-    // 为 iOS 通知操作定义类别
-    notificationCategories: [
-      DarwinNotificationCategory(
-        'trip_started_category', // 通知的类别标识符
-        actions: <DarwinNotificationAction>[
-          DarwinNotificationAction.plain('ok_action', '好的'),
-          DarwinNotificationAction.plain('cancel_action', '取消', options: {
-            DarwinNotificationActionOption.destructive, // 将“取消”标记为破坏性操作 (可选)
-          }),
-        ],
-        options: <DarwinNotificationCategoryOption>{
-          DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
-        },
-      )
-    ]
-  );
-
-  final InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-    iOS: initializationSettingsDarwin,
-  );
-
-  // 4. 初始化插件
-  await flutterLocalNotificationsPlugin.initialize(
-    initializationSettings,
-    onDidReceiveNotificationResponse:
-        (NotificationResponse notificationResponse) async {
-      debugPrint('Notification tapped: ${notificationResponse.payload}');
-      if (notificationResponse.actionId == 'ok_action') {
-        debugPrint('OK action tapped');
-        // 在这里处理“好的”按钮被点击的逻辑 (应用在前台或从后台恢复时)
-      } else if (notificationResponse.actionId == 'cancel_action') {
-        debugPrint('Cancel action tapped');
-        // 在这里处理“取消”按钮被点击的逻辑 (应用在前台或从后台恢复时)
-        // 例如可以尝试取消通知
-        await flutterLocalNotificationsPlugin.cancel(notificationResponse.id ?? 0);
-      }
-      // 你可以在这里根据 notificationResponse.payload 进行页面导航等操作
-    },
-    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-  );
-
-  // 5. (可选但推荐) 应用启动时创建通知渠道 (Android 8.0+)
-  const AndroidNotificationChannel channel = AndroidNotificationChannel(
-    'trip_status_channel', // 渠道 ID
-    '行程状态通知', // 渠道名称
-    description: '用于通知行程的开始、进行中和结束状态。', // 渠道描述
-    importance: Importance.max,
-    playSound: true,
-  );
-  // 尝试创建渠道，如果插件未正确解析 Android 特定实现，则跳过
+  debugPrint('应用启动: 初始化通知服务...');
+  
   try {
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+    final NotificationService notificationService = NotificationService();
+    
+    // 使用 notification_interaction_service.dart 中定义的后台回调
+    await notificationService.init(
+      onBackgroundResponse: notificationTapBackgroundCallback,
+    );
+
+    debugPrint('应用启动: 正在创建交互服务...');
+    
+    notificationInteractionService = NotificationInteractionService(
+      notificationService: notificationService,
+      navigatorKey: navigatorKey,
+    );
+    
+    debugPrint('应用启动: 正在初始化交互服务...');
+    await notificationInteractionService.init();
+    
+    debugPrint('应用启动: 正在请求通知权限...');
+    final bool permissionGranted = await notificationService.requestPermission();
+    debugPrint('应用启动: 通知权限状态: $permissionGranted');
+
+    debugPrint('应用启动: 初始化完成，启动UI...');
   } catch (e) {
-      debugPrint('Error creating notification channel: $e');
+    debugPrint('应用启动: 初始化通知服务失败: $e');
   }
 
-
-  runApp(const MyAppEntry());
+  runApp(MyAppEntry(notificationInteractionService: notificationInteractionService));
 }
 
+
 class MyAppEntry extends StatelessWidget {
-  const MyAppEntry({super.key});
+  final NotificationInteractionService notificationInteractionService; // 接收服务实例
+  const MyAppEntry({super.key, required this.notificationInteractionService});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '途乐乐',
+      navigatorKey: navigatorKey, // <--- 在 MaterialApp 中使用同一个 navigatorKey
       theme: ThemeData(
         primaryColor: const Color(0xFF007AFF), // 主题蓝，可以根据参考图1调整为更中性的颜色
         hintColor: const Color(0xFFFF9500),   // 辅助橙
@@ -229,14 +182,15 @@ class MyAppEntry extends StatelessWidget {
         Locale('en', 'US'),
       ],
       locale: const Locale('zh', 'CN'),
-      home: const MainPageNavigator(),
+      home: MainPageNavigator(notificationInteractionService: notificationInteractionService), // 传入服务实例
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class MainPageNavigator extends StatefulWidget {
-  const MainPageNavigator({super.key});
+  final NotificationInteractionService notificationInteractionService;
+  const MainPageNavigator({super.key, required this.notificationInteractionService});
 
   @override
   State<MainPageNavigator> createState() => _MainPageNavigatorState();
@@ -244,44 +198,26 @@ class MainPageNavigator extends StatefulWidget {
 
 class _MainPageNavigatorState extends State<MainPageNavigator> {
   int _selectedIndex = 0;
-  bool _showCreateOptions = false; // 控制创建选项的显示
+  bool _showCreateOptions = false;
 
-  static const List<Widget> _widgetOptions = <Widget>[
-    MyTripsPage(),
-    ProfilePage(),
-  ];
+  late List<Widget> _widgetOptions; // 改为实例变量
 
   @override
-  void initState() { // 新增 initState 来请求权限
+  void initState() {
     super.initState();
-    _requestNotificationPermissions();
+    _widgetOptions = <Widget>[
+      MyTripsPage(), 
+      ProfilePage(), 
+    ];
+    
+    // 不再重复请求通知权限，因为我们已经在 main() 中请求过了
+    // 检查是否有待处理的通知操作
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 延迟到下一帧执行，确保 context 已经可用
+      widget.notificationInteractionService.checkAndHandlePendingAction(); 
+      debugPrint("应用页面: 已检查待处理通知操作");
+    });
   }
-
-  Future<void> _requestNotificationPermissions() async {
-    // 请求 Android 和 iOS 通知权限
-    if (Theme.of(context).platform == TargetPlatform.iOS) {
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          );
-    } else if (Theme.of(context).platform == TargetPlatform.android) {
-      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-          flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      try {
-        await androidImplementation?.requestNotificationsPermission(); // Android 13+
-        // 你也可以在这里请求精确闹钟权限，如果需要的话：
-        // await androidImplementation?.requestExactAlarmsPermission();
-      } catch (e) {
-        debugPrint('Error requesting Android notification permissions: $e');
-      }
-    }
-  }
-
 
   void _onItemTapped(int index) {
     setState(() {
@@ -297,11 +233,13 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
 
   void _navigateToCreateOption(BuildContext context, String type) {
     setState(() {
-      _showCreateOptions = false; // 关闭选项
+      _showCreateOptions = false;
     });
     if (type == 'ai') {
+      // 如果 AiPlannerPage 需要 NotificationService, 也需要通过构造函数传入
       Navigator.push(context, MaterialPageRoute(builder: (context) => const AiPlannerPage()));
     } else if (type == 'manual') {
+      // 如果 CreateTripDetailsPage 需要 NotificationService, 也需要通过构造函数传入
       Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateTripDetailsPage()));
     }
   }
@@ -313,7 +251,7 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
         children: [
           IndexedStack(
             index: _selectedIndex,
-            children: _widgetOptions,
+            children: _widgetOptions, // 使用实例变量
           ),
           // 创建选项的蒙层和按钮
           if (_showCreateOptions)

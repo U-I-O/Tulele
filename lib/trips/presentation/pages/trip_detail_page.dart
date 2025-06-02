@@ -302,47 +302,47 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   }
 
   // --- 新增：显示行程开始通知的方法 ---
-  Future<void> _showTripStartedNotification() async {
-    // Android 通知细节，包含操作按钮
-    const AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-      'trip_status_channel', // 必须与 main.dart 中创建的渠道 ID 一致
-      '行程状态通知',        // 渠道名称 (与 main.dart 中一致)
-      channelDescription: '用于通知行程的开始、进行中和结束状态。', // 渠道描述 (与 main.dart 中一致)
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      icon: '@mipmap/ic_launcher', // 确保这个图标存在
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction('ok_action', '好的'), // actionId, title
-        AndroidNotificationAction('cancel_action', '取消'),
-      ],
-    );
+  // Future<void> _showTripStartedNotification() async {
+  //   // Android 通知细节，包含操作按钮
+  //   const AndroidNotificationDetails androidNotificationDetails =
+  //       AndroidNotificationDetails(
+  //     'trip_status_channel', // 必须与 main.dart 中创建的渠道 ID 一致
+  //     '行程状态通知',        // 渠道名称 (与 main.dart 中一致)
+  //     channelDescription: '用于通知行程的开始、进行中和结束状态。', // 渠道描述 (与 main.dart 中一致)
+  //     importance: Importance.max,
+  //     priority: Priority.high,
+  //     playSound: true,
+  //     icon: '@mipmap/ic_launcher', // 确保这个图标存在
+  //     actions: <AndroidNotificationAction>[
+  //       AndroidNotificationAction('ok_action', '好的'), // actionId, title
+  //       AndroidNotificationAction('cancel_action', '取消'),
+  //     ],
+  //   );
 
-    // iOS 通知细节，引用在 main.dart 中定义的类别
-    const DarwinNotificationDetails darwinNotificationDetails =
-        DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      categoryIdentifier: 'trip_started_category', // 必须与 main.dart 中定义的类别 ID 一致
-    );
+  //   // iOS 通知细节，引用在 main.dart 中定义的类别
+  //   const DarwinNotificationDetails darwinNotificationDetails =
+  //       DarwinNotificationDetails(
+  //     presentAlert: true,
+  //     presentBadge: true,
+  //     presentSound: true,
+  //     categoryIdentifier: 'trip_started_category', // 必须与 main.dart 中定义的类别 ID 一致
+  //   );
 
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidNotificationDetails,
-      iOS: darwinNotificationDetails,
-    );
+  //   const NotificationDetails notificationDetails = NotificationDetails(
+  //     android: androidNotificationDetails,
+  //     iOS: darwinNotificationDetails,
+  //   );
 
-    // 显示通知 - 使用从 main.dart 导入的全局实例
-    await flutterLocalNotificationsPlugin.show(
-      0, // 通知的唯一 ID
-      '旅行已开始', // 通知标题
-      '您的“${_tripData.name}”行程已正式进入旅行模式！', // 通知内容
-      notificationDetails,
-      payload: 'trip_started_payload_${_tripData.id}', // 点击通知时传递的数据
-    );
-  }
-  // --- 新增结束 ---
+  //   // 显示通知 - 使用从 main.dart 导入的全局实例
+  //   await flutterLocalNotificationsPlugin.show(
+  //     0, // 通知的唯一 ID
+  //     '旅行已开始', // 通知标题
+  //     '您的“${_tripData.name}”行程已正式进入旅行模式！', // 通知内容
+  //     notificationDetails,
+  //     payload: 'trip_started_payload_${_tripData.id}', // 点击通知时传递的数据
+  //   );
+  // }
+  // // --- 新增结束 ---
 
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
@@ -532,7 +532,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   _checkAndAdvanceOngoingActivity(currentDay, -1);
                 }
               });
-              _showTripStartedNotification(); // <--- 修改：调用显示通知的方法
+              // _showTripStartedNotification(); // <--- 修改：调用显示通知的方法
             }
           }, isPrimary: true)),
         ],
