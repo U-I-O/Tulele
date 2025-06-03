@@ -4,6 +4,13 @@ import 'dart:ui'; // For ImageFilter
 import 'dart:math'; // For random ID generation (temp)
 import 'package:dotted_border/dotted_border.dart'; // Ensure this is in your pubspec.yaml
 
+// 导入 flutter_local_notifications
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+// 确保这个路径是正确的，指向你项目中的 main.dart 文件
+// 假设 main.dart 在 lib 目录下，并且 trip_detail_page.dart 在 lib/trips/presentation/pages/ 目录下
+import '../../../../main.dart'; // <--- 修改这里以正确引用 main.dart 中的 flutterLocalNotificationsPlugin
+
 // Import actual sub-widget files if they exist and are used.
 // For this complete file, sub-widgets are defined as private methods.
 // import '../widgets/activity_card_widget.dart'; // Now defined as _StyledActivityCard method
@@ -182,7 +189,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           activities: [],
         ));
         _selectedDayIndex = _tripData.days.length - 1;
-        _mainContentPageController.jumpToPage(0);
+        _mainContentPageController.jumpToPage(0); // 确保切换到行程视图
       });
     }
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新日期已添加')));
@@ -274,8 +281,10 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       }
     }
     if (!ongoingFound) {
+      // If no next pending activity, try to find any pending to make ongoing
       for (int i = 0; i < currentDay.activities.length; i++) {
-        if (currentDay.activities[i].status == ActivityStatus.pending) {
+         // Only set to ongoing if it's not the one just completed
+        if (i != completedActivityIndex && currentDay.activities[i].status == ActivityStatus.pending) {
           currentDay.activities[i].status = ActivityStatus.ongoing;
           break;
         }
@@ -291,6 +300,50 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           ticket.dateTime.day == currentDate.day;
     }).toList();
   }
+
+  // --- 新增：显示行程开始通知的方法 ---
+  Future<void> _showTripStartedNotification() async {
+    // Android 通知细节，包含操作按钮
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+      'trip_status_channel', // 必须与 main.dart 中创建的渠道 ID 一致
+      '行程状态通知',        // 渠道名称 (与 main.dart 中一致)
+      channelDescription: '用于通知行程的开始、进行中和结束状态。', // 渠道描述 (与 main.dart 中一致)
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      icon: '@mipmap/ic_launcher', // 确保这个图标存在
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction('ok_action', '好的'), // actionId, title
+        AndroidNotificationAction('cancel_action', '取消'),
+      ],
+    );
+
+    // iOS 通知细节，引用在 main.dart 中定义的类别
+    const DarwinNotificationDetails darwinNotificationDetails =
+        DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      categoryIdentifier: 'trip_started_category', // 必须与 main.dart 中定义的类别 ID 一致
+    );
+
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: darwinNotificationDetails,
+    );
+
+    // 显示通知 - 使用从 main.dart 导入的全局实例
+    await flutterLocalNotificationsPlugin.show(
+      0, // 通知的唯一 ID
+      '旅行已开始', // 通知标题
+      '您的“${_tripData.name}”行程已正式进入旅行模式！', // 通知内容
+      notificationDetails,
+      payload: 'trip_started_payload_${_tripData.id}', // 点击通知时传递的数据
+    );
+  }
+  // --- 新增结束 ---
+
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
     return Column(
@@ -479,6 +532,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   _checkAndAdvanceOngoingActivity(currentDay, -1);
                 }
               });
+              _showTripStartedNotification(); // <--- 修改：调用显示通知的方法
             }
           }, isPrimary: true)),
         ],
@@ -569,7 +623,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                           _selectedDayIndex = index;
                         });
                       }
-                      _mainContentPageController.jumpToPage(0);
+                      _mainContentPageController.jumpToPage(0); // 确保切换到行程视图
                     }
                   },
                   selectedColor: Theme.of(context).primaryColor.withOpacity(0.10),
@@ -624,7 +678,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   Widget _buildActivitiesListWithAddButton() {
     if (_tripData.days.isEmpty || _selectedDayIndex < 0 || _selectedDayIndex >= _tripData.days.length) {
       return Center(child: Padding(
-        padding: const EdgeInsets.all(20.0), // Added padding
+        padding: const EdgeInsets.all(20.0),
         child: Text(
           _tripData.days.isEmpty && _currentMode == TripMode.edit ? '请点击日期栏“添加日期”开始规划' :
           _tripData.days.isEmpty ? '此行程暂无日期安排' : '请选择一个日期查看活动',
@@ -640,9 +694,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       itemCount++;
     }
 
-    if (itemCount == 0 && _currentMode != TripMode.edit) { // Can be 1 in edit mode for add button
+    if (itemCount == 0 && _currentMode != TripMode.edit) {
       return Center(child: Padding(
-        padding: const EdgeInsets.all(20.0), // Added padding
+        padding: const EdgeInsets.all(20.0),
         child: Text('本日暂无活动安排', style: TextStyle(fontSize: 16, color: Colors.grey[500])),
       ));
     }
@@ -655,11 +709,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           return _buildAddActivityCardStyled();
         }
         final activity = currentDay.activities[index];
-        // showConnector is now handled within _StyledActivityCard based on its position
         return _StyledActivityCard(
           activity: activity,
           mode: _currentMode,
-          // showConnector: index < currentDay.activities.length - 1, // Pass this explicitly
           onTap: _currentMode == TripMode.edit ? () => _editActivity(currentDay, activity, index) : null,
           onStatusChange: _currentMode == TripMode.travel ? (status) {
             if(mounted) {
@@ -676,7 +728,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
 
   Widget _buildAddActivityCardStyled() {
     return Padding(
-      padding: const EdgeInsets.only(left: 40.0, bottom: 16), // Adjusted left padding to align with activity cards' content area
+      padding: const EdgeInsets.only(left: 0.0, bottom: 16), // 移除左边padding以使其与卡片对齐
       child: InkWell(
         onTap: _addActivityToCurrentDay,
         borderRadius: BorderRadius.circular(16),
@@ -708,9 +760,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     );
   }
 
-  Widget _buildBottomViewSwitcherBarSliver() { // This now returns a SliverPersistentHeader
+  Widget _buildBottomViewSwitcherBarSliver() {
     return SliverPersistentHeader(
-      pinned: true, // Will stick below the main SliverAppBar AND DateCapsuleBarSliver
+      pinned: true,
       delegate: _SliverAppBarDelegate(
         minHeight: 50.0,
         maxHeight: 50.0,
@@ -760,6 +812,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[500], size: 22),
+              // Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[500])),
             ],
           ),
         ),
@@ -786,7 +839,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           transitionBuilder: (Widget child, Animation<double> animation) {
             return ScaleTransition(scale: animation, child: child);
           },
-          layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) { // Added ? for currentChild
+          layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
             return Stack(
               alignment: Alignment.bottomRight,
               children: <Widget>[
@@ -825,7 +878,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       key: const ValueKey('expandedAiInput'),
       width: _isAiChatExpanded ? MediaQuery.of(context).size.width - 24 : 0,
       child: Material(
-        elevation: 0.0, // Removed shadow from here
+        elevation: 0.0,
         color: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28.0)),
         child: ClipRRect(
@@ -900,7 +953,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
         top: false,
         bottom: false,
@@ -912,7 +964,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   child: CustomScrollView(
                     slivers: [
                       SliverAppBar(
-                        expandedHeight: _currentMode == TripMode.view ? 300.0 : 260.0,
+                        expandedHeight: _currentMode == TripMode.view ? 300.0 : (_currentMode == TripMode.edit ? 260.0 : 260.0), // Adjusted for edit/travel
                         floating: false,
                         pinned: true,
                         stretch: true,
@@ -925,16 +977,15 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                           background: _buildCoverAndTitleSectionWidget(context),
                         ),
                       ),
-                      _buildBottomViewSwitcherBarSliver(), // Moved here
-                      _buildDateCapsuleBarSliver(),
-                      SliverFillRemaining(
-                        hasScrollBody: true,
+                      _buildBottomViewSwitcherBarSliver(), // This is the "行程 | 地图 | 票夹" bar
+                      _buildDateCapsuleBarSliver(), // This is the "Day 1 | Day 2 | Add Date" bar
+                      SliverFillRemaining( // This makes the PageView take up the rest of the space
+                        hasScrollBody: true, // Important if PageView children are scrollable
                         child: _buildMainContentPageView(),
                       ),
                     ],
                   ),
                 ),
-                // Removed _buildBottomViewSwitcherBar() from here
               ],
             ),
             if (_currentMode == TripMode.edit || _currentMode == TripMode.travel)
@@ -947,19 +998,15 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
 }
 
 // _StyledActivityCard (The new styled card for activities)
-// Placed within the same file for simplicity, but ideally in its own widget file.
 class _StyledActivityCard extends StatelessWidget {
   final Activity activity;
   final TripMode mode;
-  // final bool showConnector; // Connector logic is now part of its parent Stack
   final VoidCallback? onTap;
   final ValueChanged<ActivityStatus>? onStatusChange;
 
   const _StyledActivityCard({
-    // super.key, // Key can be omitted
     required this.activity,
     required this.mode,
-    // required this.showConnector,
     this.onTap,
     this.onStatusChange,
   });
@@ -978,24 +1025,28 @@ class _StyledActivityCard extends StatelessWidget {
 
     if (isOngoing) {
       cardBackgroundColor = Theme.of(context).primaryColor.withOpacity(0.08);
-      titleColor = Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor; // Fallback
+      titleColor = Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor;
       subtitleColor = Theme.of(context).primaryColor;
       iconColor = Theme.of(context).primaryColor;
       border = Border.all(color: Theme.of(context).primaryColor.withOpacity(0.6), width: 1.5);
       elevation = 2.0;
     } else if (isCompleted) {
-      cardBackgroundColor = Colors.transparent;
+      cardBackgroundColor = Colors.transparent; // Or a very light grey like Colors.grey.shade50
       titleColor = Colors.grey.shade500;
       subtitleColor = Colors.grey.shade400;
       iconColor = Colors.grey.shade400;
       border = Border.all(color: Colors.grey.shade300, width: 1);
       elevation = 0.0;
+    } else { // Pending or View mode
+       border = Border.all(color: Colors.grey.shade200, width: 1);
     }
+
 
     return InkWell(
       onTap: mode == TripMode.edit ? onTap : null,
       borderRadius: BorderRadius.circular(16),
       child: Container(
+        margin: const EdgeInsets.only(bottom: 12), // Add margin between cards
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
           color: cardBackgroundColor,
@@ -1003,7 +1054,7 @@ class _StyledActivityCard extends StatelessWidget {
           border: border,
           boxShadow: elevation > 0 ? [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.08),
+              color: isOngoing ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.grey.withOpacity(0.08),
               spreadRadius: 1,
               blurRadius: 4,
               offset: const Offset(0, 2),
@@ -1017,11 +1068,11 @@ class _StyledActivityCard extends StatelessWidget {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: isOngoing ? Theme.of(context).primaryColor.withOpacity(0.15) : Colors.grey.shade100,
+                color: isOngoing ? Theme.of(context).primaryColor.withOpacity(0.15) : (isCompleted ? Colors.grey.shade100.withOpacity(0.7) : Colors.grey.shade100),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                  Icons.location_on_outlined,
+                  Icons.location_on_outlined, // Consider different icons based on activity type later
                   color: iconColor,
                   size: 26
               ),

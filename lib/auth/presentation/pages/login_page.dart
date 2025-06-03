@@ -51,9 +51,11 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.of(context).pop(true); // 返回并标记登录成功
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {

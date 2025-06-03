@@ -6,12 +6,10 @@ import '../../../core/services/user_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final String email;
-  final String verificationCode;
   
   const ResetPasswordPage({
     Key? key,
     required this.email,
-    required this.verificationCode,
   }) : super(key: key);
 
   @override
@@ -21,11 +19,11 @@ class ResetPasswordPage extends StatefulWidget {
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _formKey = GlobalKey<FormState>();
   final List<TextEditingController> _codeControllers = List.generate(
-    4,
+    6,
     (_) => TextEditingController(),
   );
   final List<FocusNode> _codeFocusNodes = List.generate(
-    4,
+    6,
     (_) => FocusNode(),
   );
   final _passwordController = TextEditingController();
@@ -44,6 +42,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   int _resendCooldown = 60;
   bool _canResend = false;
   
+  // 验证成功后的验证码
+  String _verifiedCode = '';
+  
   String get _enteredCode {
     return _codeControllers.map((c) => c.text).join();
   }
@@ -52,70 +53,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   void initState() {
     super.initState();
     _startResendCooldown();
-    
-    // 显示验证码 (实际项目中应该通过邮件发送)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showVerificationCodeDialog();
-    });
-  }
-  
-  void _showVerificationCodeDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          '模拟验证码',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '实际项目中，验证码应该通过邮件发送，这里是模拟效果。',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '您的验证码是：',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  widget.verificationCode,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).primaryColor,
-                    letterSpacing: 4,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('好的，我知道了'),
-          ),
-        ],
-      ),
-    );
   }
   
   void _startResendCooldown() {
@@ -144,16 +81,16 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     });
     
     try {
-      // 生成新的验证码
-      final newVerificationCode = UserService().generateVerificationCode();
+      // 调用API发送新验证码
+      await UserService().sendPasswordResetCode(widget.email);
       
-      // 在实际项目中，这里应该调用API发送邮件
-      // 这里我们只是模拟
-      await Future.delayed(const Duration(seconds: 1));
-      
-      // 显示新验证码
       if (mounted) {
-        _showVerificationCodeDialog();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('新的验证码已发送到您的邮箱'),
+            backgroundColor: Colors.green[700],
+          ),
+        );
         
         // 开始新的倒计时
         _startResendCooldown();
@@ -172,7 +109,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   }
   
   Future<void> _verifyCode() async {
-    if (_enteredCode.length != 4) {
+    if (_enteredCode.length != 6) {
       setState(() {
         _errorMessage = '请输入完整的验证码';
       });
@@ -185,13 +122,20 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     });
     
     try {
-      // 验证码验证
-      if (_enteredCode != widget.verificationCode) {
+      // 通过API验证验证码
+      bool isValid = await UserService().verifyEmailCode(
+        widget.email, 
+        _enteredCode, 
+        'reset_password'
+      );
+      
+      if (!isValid) {
         throw Exception('验证码不正确，请重新输入');
       }
       
       setState(() {
         _isCodeVerified = true;
+        _verifiedCode = _enteredCode; // 保存验证通过的验证码
       });
       
       // 将焦点移到密码输入框
@@ -227,10 +171,14 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     });
     
     try {
-      // 重置密码
-      await UserService().changePassword(
+      // 打印调试信息
+      debugPrint('准备重置密码: 邮箱=${widget.email}, 验证码=${_verifiedCode}, 新密码长度=${_passwordController.text.length}');
+      
+      // 重置密码 (使用API) - 使用保存的已验证通过的验证码
+      await UserService().resetPassword(
         widget.email,
         _passwordController.text,
+        _verifiedCode,
       );
       
       // 显示成功提示
@@ -246,6 +194,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
+      debugPrint('重置密码失败: $e');
       setState(() {
         _errorMessage = e.toString();
       });
@@ -340,7 +289,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '请输入发送至 ${widget.email} 的4位验证码',
+                    '请输入发送至 ${widget.email} 的6位验证码',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -351,9 +300,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   // Verification code input
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(4, (index) {
+                    children: List.generate(6, (index) {
                       return SizedBox(
-                        width: 55,
+                        width: 40,
                         height: 55,
                         child: TextFormField(
                           controller: _codeControllers[index],
@@ -411,7 +360,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           ),
                           onChanged: (value) {
                             if (value.isNotEmpty) {
-                              if (index < 3) {
+                              if (index < 5) {
                                 _codeFocusNodes[index + 1].requestFocus();
                               } else {
                                 FocusScope.of(context).unfocus();

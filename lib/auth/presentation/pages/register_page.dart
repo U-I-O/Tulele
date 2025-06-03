@@ -3,7 +3,6 @@ import 'dart:async';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/services/user_service.dart';
-import 'verification_page.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -27,9 +26,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
-  bool _isCheckingEmail = false;
   String? _errorMessage;
-  Timer? _debounce;
 
   @override
   void dispose() {
@@ -43,48 +40,11 @@ class _RegisterPageState extends State<RegisterPage> {
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     
-    _debounce?.cancel();
     super.dispose();
   }
 
-  // 检查邮箱是否已注册
-  Future<bool> _checkEmailRegistered(String email) async {
-    if (email.isEmpty) return false;
-    
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(email)) return false;
-    
-    setState(() {
-      _isCheckingEmail = true;
-    });
-    
-    try {
-      final isRegistered = await UserService().isEmailRegistered(email);
-      return isRegistered;
-    } catch (e) {
-      return false;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isCheckingEmail = false;
-        });
-      }
-    }
-  }
-
-  // 处理邮箱输入变化
-  void _handleEmailChanged(String value) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 800), () async {
-      final isRegistered = await _checkEmailRegistered(value);
-      if (isRegistered && mounted) {
-        _formKey.currentState?.validate();
-      }
-    });
-  }
-
-  // 发送验证码
-  Future<void> _sendVerificationCode() async {
+  // 用户注册
+  Future<void> _register() async {
     if (_formKey.currentState?.validate() != true) {
       return;
     }
@@ -95,32 +55,19 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      // 检查邮箱是否已被注册
-      final isRegistered = await _checkEmailRegistered(_emailController.text);
-      if (isRegistered) {
-        throw Exception('该邮箱已被注册');
-      }
+      // 调用用户服务注册
+      await UserService().register(
+        email: _emailController.text,
+        username: _usernameController.text,
+        password: _passwordController.text,
+      );
       
-      // 模拟生成验证码
-      final verificationCode = UserService().generateVerificationCode();
-      
-      // 导航到验证页面
+      // 注册成功，返回登录页
       if (mounted) {
-        final result = await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => VerificationPage(
-              email: _emailController.text,
-              verificationCode: verificationCode,
-              username: _usernameController.text,
-              password: _passwordController.text,
-            ),
-          ),
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('注册成功')),
         );
-        
-        // 如果验证成功，返回登录页
-        if (result == true && mounted) {
-          Navigator.of(context).pop();
-        }
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
@@ -199,7 +146,6 @@ class _RegisterPageState extends State<RegisterPage> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     prefixIcon: Icons.email_outlined,
-                    suffixIcon: _isCheckingEmail ? Icons.sync : null,
                     focusNode: _emailFocusNode,
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _usernameFocusNode.requestFocus(),
@@ -213,7 +159,6 @@ class _RegisterPageState extends State<RegisterPage> {
                         return '请输入有效的邮箱地址';
                       }
                       
-                      // 邮箱格式验证通过，其他验证在提交时进行
                       return null;
                     },
                   ),
@@ -287,7 +232,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     },
                     focusNode: _confirmPasswordFocusNode,
                     textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _sendVerificationCode(),
+                    onSubmitted: (_) => _register(),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return '请确认密码';
@@ -302,8 +247,8 @@ class _RegisterPageState extends State<RegisterPage> {
                   
                   // Register button
                   CustomButton(
-                    text: '获取验证码',
-                    onPressed: _sendVerificationCode,
+                    text: '立即注册',
+                    onPressed: _register,
                     isLoading: _isLoading,
                   ),
                   const SizedBox(height: 20),

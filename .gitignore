@@ -32,6 +32,10 @@
 !/lib/*
 !/lib/**
 
+!/backend/
+!/backend/*
+!/backend/**
+
 # Re-ignore specific files within lib that should be ignored (e.g., generated files)
 /lib/**/*.g.dart
 /lib/**/*.freezed.dart
