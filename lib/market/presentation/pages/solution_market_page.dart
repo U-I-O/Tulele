@@ -1,19 +1,27 @@
-// lib/solution_market_page.dart (UI美化优化)
+// lib/market/presentation/pages/solution_market_page.dart
 import 'package:flutter/material.dart';
-import 'dart:ui'; // For ImageFilter
-import 'plan_details_page.dart';
+// import 'dart:ui'; // For ImageFilter - 如果你的UI需要模糊效果
 
-// TravelPlanMarketItem 模型类保持不变 (来自之前的代码)
+import '../../../core/services/api_service.dart';
+import '../../../core/models/api_user_trip_model.dart'; // 我们将直接使用 ApiUserTrip
+import '../../../core/models/api_trip_plan_model.dart'; // 用于 planDetails
+import 'plan_details_page.dart'; // 保持导航目标
+
+// TravelPlanMarketItem 仍然用作 UI 和 ApiUserTrip 之间的适配层或显示模型
+// 但其字段现在将从 ApiUserTrip (及其 planDetails) 派生
 class TravelPlanMarketItem {
-  final String id;
+  final String id; // 这将是 UserTrip 的 ID
   final String title;
-  final String? imageUrl; // 改为可选，并可以是网络图片
-  final IconData icon; // 作为图片不存在时的备用
+  final String? imageUrl;
+  final IconData icon;
   final double rating;
   final int reviewCount;
   final String price;
   final List<String> tags;
   final String creator;
+  // 可以考虑直接存储 ApiUserTrip 对象，如果 PlanDetailsPage 需要它
+  final ApiUserTrip userTripSource;
+
 
   TravelPlanMarketItem({
     required this.id,
@@ -25,7 +33,47 @@ class TravelPlanMarketItem {
     required this.price,
     required this.tags,
     required this.creator,
+    required this.userTripSource,
   });
+
+  // 工厂构造函数，用于从 ApiUserTrip 创建 TravelPlanMarketItem
+  factory TravelPlanMarketItem.fromApiUserTrip(ApiUserTrip userTrip) {
+    final String itemTitle = userTrip.displayName; // 使用 getter
+    final String? itemImageUrl = userTrip.coverImage ?? userTrip.planDetails?.coverImage;
+    final double itemRating = userTrip.planDetails?.averageRating ?? 0.0;
+    final int itemReviewCount = userTrip.planDetails?.reviewCount ?? 0;
+    final double? itemPrice = userTrip.planDetails?.platformPrice;
+    final String itemCreator = userTrip.creatorName ?? userTrip.planDetails?.creatorName ?? '匿名创作者';
+    final List<String> itemTags = userTrip.tags.isNotEmpty ? userTrip.tags : (userTrip.planDetails?.tags ?? []);
+
+    return TravelPlanMarketItem(
+      id: userTrip.id,
+      title: itemTitle,
+      imageUrl: itemImageUrl,
+      icon: _getIconForFirstTag(itemTags), // 根据标签获取图标
+      rating: itemRating,
+      reviewCount: itemReviewCount,
+      price: itemPrice != null ? '¥${itemPrice.toStringAsFixed(2)}' : '价格待定',
+      tags: itemTags,
+      creator: itemCreator,
+      userTripSource: userTrip, // 保存原始 UserTrip 对象
+    );
+  }
+
+  static IconData _getIconForFirstTag(List<String> tags) {
+    if (tags.isEmpty) return Icons.explore_outlined;
+    String firstTag = tags.first.toLowerCase();
+    switch (firstTag) {
+      case '亲子': return Icons.child_friendly_outlined;
+      case '海岛': return Icons.beach_access_outlined;
+      case '文化': return Icons.account_balance_outlined;
+      case '历史': return Icons.history_edu_outlined;
+      case '美食': return Icons.restaurant_menu_outlined;
+      case '自然': return Icons.landscape_outlined;
+      case '徒步': return Icons.directions_walk_outlined;
+      default: return Icons.explore_outlined;
+    }
+  }
 }
 
 
@@ -37,38 +85,76 @@ class SolutionMarketPage extends StatefulWidget {
 }
 
 class _SolutionMarketPageState extends State<SolutionMarketPage> {
+  final ApiService _apiService = ApiService();
   final TextEditingController _searchController = TextEditingController();
 
-  final List<TravelPlanMarketItem> _featuredPlans = [
-    TravelPlanMarketItem(id: 'fp1', title: '三亚海岛度假 | 亲子游玩5日行程', icon: Icons.beach_access, rating: 5.0, reviewCount: 12, price: '¥39.9', tags: ['亲子', '海岛'], creator: '旅行达人张三', imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YmVhY2h8ZW58MHx8MHx8fDA%3D&auto=format&fit=crop&w=500&q=60'),
-    TravelPlanMarketItem(id: 'fp2', title: '北京文化之旅 | 故宫长城深度游', icon: Icons.account_balance, rating: 4.8, reviewCount: 25, price: '¥29.9', tags: ['文化', '历史'], creator: '小红薯探险家', imageUrl: 'https://images.unsplash.com/photo-1547981609-4b6bfe67ca0b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8YmVpamluZ3xlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60'),
-  ];
-
-  final List<TravelPlanMarketItem> _allPlans = [
-    TravelPlanMarketItem(id: 'p1', title: '云南秘境探索7日游', icon: Icons.landscape_outlined, rating: 4.9, reviewCount: 180, price: '¥45.0', tags: ['自然', '徒步'], creator: '地理学家'),
-    TravelPlanMarketItem(id: 'p2', title: '成都美食寻味之旅3日', icon: Icons.restaurant_menu_outlined, rating: 4.7, reviewCount: 250, price: '¥19.9', tags: ['美食', '休闲'], creator: '吃货小分队', imageUrl: 'https://images.unsplash.com/photo-1596561250170-7554517310e0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8Y2hlbmdkdXxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60'),
-    TravelPlanMarketItem(id: 'p3', title: '日本关西赏枫经典路线', icon: Icons.airplanemode_active_outlined, rating: 4.9, reviewCount: 95, price: '¥59.9', tags: ['出境', '摄影'], creator: '全球旅拍师'),
-    TravelPlanMarketItem(id: 'p4', title: '欧洲文艺复兴四大城记', icon: Icons.palette_outlined, rating: 4.6, reviewCount: 72, price: '¥88.0', tags: ['艺术', '历史', '欧洲'], creator: '艺术史教授'),
-  ];
-
+  Future<List<ApiUserTrip>>? _allPublishedUserTripsFuture;
+  List<TravelPlanMarketItem> _featuredPlans = [];
+  List<TravelPlanMarketItem> _allMarketPlans = [];
   List<TravelPlanMarketItem> _searchResults = [];
+
+  String _currentSearchQuery = "";
 
   @override
   void initState() {
     super.initState();
-    _searchResults = _allPlans;
+    _loadMarketData();
+  }
+
+  Future<void> _loadMarketData() async {
+    if (!mounted) return;
+    setState(() {
+      _allPublishedUserTripsFuture = _apiService.getPublishedUserTrips(
+        // 获取所有已发布的，可以按某种默认方式排序，如更新时间或热度
+        // sortBy: 'updated_at', // 或者 'popularity' 等，需后端支持
+      );
+    });
+
+    _allPublishedUserTripsFuture?.then((userTrips) {
+      if (!mounted) return;
+      final marketItems = userTrips.map((ut) => TravelPlanMarketItem.fromApiUserTrip(ut)).toList();
+      
+      setState(() {
+        _allMarketPlans = marketItems;
+        // 筛选精选方案：例如评论数 > 10 (基于 TripPlan 的 reviewCount)
+        _featuredPlans = marketItems.where((item) {
+            // reviewCount 来自 userTripSource.planDetails.reviewCount
+            return item.reviewCount > 10; // 你可以调整这个阈值
+        }).toList();
+        // 初始搜索结果为所有方案
+        _filterPlans(_currentSearchQuery); // 应用当前搜索（如果之前有）
+      });
+    }).catchError((error) {
+      if (mounted) {
+        print("Error loading market data: $error");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载方案市场数据失败: $error'), backgroundColor: Colors.red),
+        );
+        setState(() { // 确保在出错时列表为空或显示错误信息
+          _allMarketPlans = [];
+          _featuredPlans = [];
+          _searchResults = [];
+        });
+      }
+    });
   }
 
   void _filterPlans(String query) {
-    if (query.isEmpty) {
-      setState(() { _searchResults = _allPlans; });
+    if (!mounted) return;
+    _currentSearchQuery = query.toLowerCase(); // 保存当前搜索词
+    
+    if (_currentSearchQuery.isEmpty) {
+      setState(() { _searchResults = _allMarketPlans; });
       return;
     }
-    final results = _allPlans.where((plan) {
+    final results = _allMarketPlans.where((plan) {
       final titleLower = plan.title.toLowerCase();
-      final queryLower = query.toLowerCase();
-      final tagsContainQuery = plan.tags.any((tag) => tag.toLowerCase().contains(queryLower));
-      return titleLower.contains(queryLower) || tagsContainQuery;
+      final tagsContainQuery = plan.tags.any((tag) => tag.toLowerCase().contains(_currentSearchQuery));
+      final creatorLower = plan.creator.toLowerCase();
+      // 可以加入更多搜索维度，如目的地 (需要 TravelPlanMarketItem 包含 destination)
+      return titleLower.contains(_currentSearchQuery) || 
+             tagsContainQuery || 
+             creatorLower.contains(_currentSearchQuery);
     }).toList();
     setState(() { _searchResults = results; });
   }
@@ -80,106 +166,132 @@ class _SolutionMarketPageState extends State<SolutionMarketPage> {
         title: const Text('方案市场'),
         centerTitle: true,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 0,
+        elevation: 0.5, // 轻微阴影
       ),
-      backgroundColor: Colors.grey[50], // 非常浅的灰色背景
-      body: CustomScrollView(
-        slivers: <Widget>[
-          SliverAppBar( // 将搜索框放在SliverAppBar中，可以有悬浮效果
-            pinned: true,
-            floating: true,
-            elevation: 1,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            automaticallyImplyLeading: false, // 不显示返回按钮
-            toolbarHeight: 70, // 给搜索框足够的高度
-            title: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: '搜索目的地、主题...',
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
-                  filled: true,
-                  fillColor: Colors.white, // 搜索框背景白色
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30.0), // 更圆润
-                    borderSide: BorderSide.none,
+      backgroundColor: Colors.grey[50],
+      body: RefreshIndicator( // 添加下拉刷新
+        onRefresh: _loadMarketData,
+        child: CustomScrollView(
+          slivers: <Widget>[
+            SliverAppBar(
+              pinned: true, floating: true, elevation: 1,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              automaticallyImplyLeading: false,
+              toolbarHeight: 70,
+              title: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: TextField( /* ... 搜索框 UI (保持你之前的实现) ... */ 
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '搜索目的地、主题...',
+                    prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
+                    filled: true,
+                    fillColor: Colors.white, // 搜索框背景白色
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30.0), // 更圆润
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                    enabledBorder: OutlineInputBorder( // 默认状态下的边框
+                      borderRadius: BorderRadius.circular(30.0),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    focusedBorder: OutlineInputBorder( // 聚焦状态下的边框
+                      borderRadius: BorderRadius.circular(30.0),
+                      borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 1.5),
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
-                  enabledBorder: OutlineInputBorder( // 默认状态下的边框
-                    borderRadius: BorderRadius.circular(30.0),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  focusedBorder: OutlineInputBorder( // 聚焦状态下的边框
-                    borderRadius: BorderRadius.circular(30.0),
-                    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 1.5),
+                  onChanged: _filterPlans,
+                ),
+              ),
+            ),
+            
+            // --- “精选方案”区域 ---
+            if (_featuredPlans.isNotEmpty) ...[ // 只有当有精选方案时才显示此区域
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16.0, 20, 16.0, 16.0),
+                  child: Text('✨ 精选方案', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onBackground)),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 250,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    itemCount: _featuredPlans.length,
+                    itemBuilder: (context, index) {
+                      return _buildFeaturedPlanCard(_featuredPlans[index]);
+                    },
                   ),
                 ),
-                onChanged: _filterPlans,
               ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 20, 16.0, 16.0),
-              child: Text(
-                '✨ 精选方案',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onBackground),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 250, // 增加精选方案卡片的高度
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                itemCount: _featuredPlans.length,
-                itemBuilder: (context, index) {
-                  return _buildFeaturedPlanCard(_featuredPlans[index]);
-                },
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 24.0, 16.0, 16.0),
-              child: Text(
-                '更多好方案',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onBackground),
-              ),
-            ),
-          ),
-          _searchResults.isEmpty
-              ? SliverFillRemaining(
-            child: Center(
+            ],
+
+            // --- “更多好方案”/搜索结果区域 ---
+            SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.fromLTRB(16.0, 24.0, 16.0, 16.0),
                 child: Text(
-                  _searchController.text.isEmpty ? '暂无更多方案' : '未找到与“${_searchController.text}”相关的方案',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[500]),
-                  textAlign: TextAlign.center,
+                 _currentSearchQuery.isEmpty ? '更多好方案' : '搜索结果',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onBackground),
                 ),
               ),
             ),
-          )
-              : SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: _buildPlanListItem(_searchResults[index]),
-                );
-              },
-              childCount: _searchResults.length,
+
+            // 使用 FutureBuilder 来处理 _allPublishedUserTripsFuture 的状态
+            FutureBuilder<List<ApiUserTrip>>(
+              future: _allPublishedUserTripsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && _allMarketPlans.isEmpty) { // 初始加载时显示
+                  return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
+                } else if (snapshot.hasError && _allMarketPlans.isEmpty) { // 初始加载错误时显示
+                   return SliverFillRemaining(
+                      child: Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Text('加载失败: ${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error))
+                          )
+                      )
+                  );
+                }
+                // 如果有数据（包括搜索结果为空的情况），则显示 _searchResults
+                if (_searchResults.isEmpty) {
+                  return SliverFillRemaining(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Text(
+                          _currentSearchQuery.isEmpty ? '暂无更多方案' : '未找到与“$_currentSearchQuery”相关的方案',
+                          style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  );
+                } else {
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                          child: _buildPlanListItem(_searchResults[index]),
+                        );
+                      },
+                      childCount: _searchResults.length,
+                    ),
+                  );
+                }
+              }
             ),
-          ),
-          SliverToBoxAdapter(child: SizedBox(height: MediaQuery.of(context).padding.bottom + 16)),
-        ],
+            SliverToBoxAdapter(child: SizedBox(height: MediaQuery.of(context).padding.bottom + 16)),
+          ],
+        ),
       ),
     );
   }
-
+  
   Widget _buildFeaturedPlanCard(TravelPlanMarketItem plan) {
     return SizedBox(
       width: 200, // 精选卡片宽度调整
@@ -190,7 +302,7 @@ class _SolutionMarketPageState extends State<SolutionMarketPage> {
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
         child: InkWell(
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => PlanDetailsPage(plan: plan)));
+            Navigator.push(context, MaterialPageRoute(builder: (context) => PlanDetailsPage(userTripId: plan.userTripSource.id,)));
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,7 +350,7 @@ class _SolutionMarketPageState extends State<SolutionMarketPage> {
       margin: const EdgeInsets.only(bottom: 16.0),
       child: InkWell(
         onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => PlanDetailsPage(plan: plan)));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => PlanDetailsPage(userTripId: plan.userTripSource.id,)));
         },
         borderRadius: BorderRadius.circular(12.0),
         child: Padding(

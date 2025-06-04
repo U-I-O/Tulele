@@ -1,8 +1,11 @@
 // lib/trips/presentation/widgets/activity_card_widget.dart
 import 'package:flutter/material.dart';
-import '../pages/trip_detail_page.dart'; // 为了引入 Activity, TripMode, ActivityStatus (理想情况下这些应在独立文件)
+import '../../../core/models/api_user_trip_model.dart';
+// 确保 TripMode 和 ActivityStatus 枚举从正确的位置导入
+import '../../../core/enums/trip_enums.dart'; // 假设枚举已移至此处
 
-// LineConnectorPainter 修改
+// LineConnectorPainter 保持不变 (来自你提供的 activity_card_widget.dart)
+// 它用于在 TransportConnectorWidget 内部绘制带文本的连接线
 class LineConnectorPainter extends CustomPainter {
   final Color lineColor;
   final String? transportText;
@@ -16,62 +19,57 @@ class LineConnectorPainter extends CustomPainter {
       ..color = lineColor
       ..strokeWidth = 1.5;
 
-    // 绘制垂直线
-    // 从时间文字下方一点开始，到卡片底部上方一点结束，避免完全连接到边框
-    const double linePadding = 4.0;
+    const double linePadding = 0; // 连接线应该从顶部到底部
     canvas.drawLine(Offset(size.width / 2, linePadding), Offset(size.width / 2, size.height - linePadding), paint);
 
-    // 绘制交通方式和时间 (如果提供)
     if (transportText != null || durationText != null) {
-      final textStyle = TextStyle(color: Colors.grey[600], fontSize: 10);
-      final iconColor = Colors.grey[600];
-      double offsetY = size.height / 2 - 15; // 大致居中开始点
-      const double textOffsetFromLine = 5.0; // 文本与线的水平偏移
-      const double iconTextSpacing = 2.0; // 图标和文本之间的间距
+      final textStyle = TextStyle(color: Colors.grey[700], fontSize: 11, fontWeight: FontWeight.w500);
+      final iconColor = Colors.grey[700];
+      double offsetY = size.height / 2 - 15; // 初始偏移量，可能需要调整
+      const double textOffsetFromLine = 8.0; // 图标和文字离中心线的距离
+      const double iconTextSpacing = 3.0;
+
+      List<Widget> displayItems = [];
+      String fullText = "";
 
       if (transportText != null) {
         final IconData transportIconData = transportText == '打车' ? Icons.local_taxi_outlined :
-        transportText == '公交' ? Icons.directions_bus_outlined :
-        transportText == '步行' ? Icons.directions_walk_outlined :
-        Icons.drive_eta_outlined;
+                                          transportText == '公交' ? Icons.directions_bus_outlined :
+                                          transportText == '步行' ? Icons.directions_walk_outlined :
+                                          transportText == '驾车' ? Icons.drive_eta_outlined : // 增加驾车图标
+                                          transportText == '飞机' ? Icons.flight_takeoff_outlined :
+                                          transportText == '火车' ? Icons.train_outlined :
+                                          Icons.moving_rounded; // 默认图标
 
-        // 绘制图标
         final iconPainter = TextPainter(
           text: TextSpan(
             text: String.fromCharCode(transportIconData.codePoint),
-            style: TextStyle(
-              fontSize: 13, // 图标大小
-              fontFamily: transportIconData.fontFamily,
-              package: transportIconData.fontPackage, // 处理 CupertinoIcons 等
-              color: iconColor,
-            ),
+            style: TextStyle(fontSize: 14, fontFamily: transportIconData.fontFamily, package: transportIconData.fontPackage, color: iconColor),
           ),
           textDirection: TextDirection.ltr,
         );
         iconPainter.layout();
-        iconPainter.paint(canvas, Offset(size.width / 2 + textOffsetFromLine, offsetY));
-
-        // 绘制交通方式文本
-        final transportTextPainter = TextPainter(
-          text: TextSpan(text: transportText, style: textStyle),
-          textDirection: TextDirection.ltr,
-        );
-        transportTextPainter.layout(maxWidth: size.width - (size.width / 2 + textOffsetFromLine + iconPainter.width + iconTextSpacing)); // 限制文本宽度
-        transportTextPainter.paint(canvas, Offset(size.width / 2 + textOffsetFromLine + iconPainter.width + iconTextSpacing, offsetY + (iconPainter.height - transportTextPainter.height) / 2)); // 与图标垂直对齐
-
-        offsetY += (iconPainter.height > transportTextPainter.height ? iconPainter.height : transportTextPainter.height) + 2; // 基于较高的元素增加偏移
+        // 图标绘制位置调整到更中心
+        iconPainter.paint(canvas, Offset(size.width / 2 + textOffsetFromLine, size.height / 2 - iconPainter.height / 2 - (durationText != null ? 8 : 0) ));
+        
+        fullText += "$transportText ";
       }
 
       if (durationText != null) {
-        final durationTextPainter = TextPainter(
-          text: TextSpan(text: durationText, style: textStyle),
+        fullText += durationText ?? '';
+      }
+      
+      if (fullText.isNotEmpty) {
+         final textContentPainter = TextPainter(
+          text: TextSpan(text: fullText.trim(), style: textStyle),
           textDirection: TextDirection.ltr,
         );
-        durationTextPainter.layout(maxWidth: size.width - (size.width / 2 + textOffsetFromLine)); // 限制文本宽度
-        // 如果上面没有transportText，则 offsetY 可能需要调整
-        if (transportText == null) offsetY = size.height / 2 - (durationTextPainter.height / 2) ; // 垂直居中
-
-        durationTextPainter.paint(canvas, Offset(size.width / 2 + textOffsetFromLine, offsetY));
+        textContentPainter.layout(maxWidth: size.width / 2 - textOffsetFromLine - 5); // 限制文本宽度
+        // 文本绘制位置调整到更中心
+        textContentPainter.paint(canvas, Offset(
+            size.width / 2 + textOffsetFromLine + (transportText != null ? 14 + iconTextSpacing : 0), // 如果有图标，文本向右偏移
+            size.height / 2 - textContentPainter.height / 2 + (transportText != null && durationText != null ? 8 : 0) // 如果两者都有，持续时间文字向下一点
+        ));
       }
     }
   }
@@ -85,167 +83,219 @@ class LineConnectorPainter extends CustomPainter {
 }
 
 
-// ActivityCard 类定义保持不变
-class ActivityCard extends StatelessWidget {
-  final Activity activity;
+/// 新的活动卡片 Widget，用于展示单个活动的详细信息
+class ActivityDisplayCard extends StatelessWidget {
+  final ApiActivityFromUserTrip activity;
   final TripMode mode;
-  final bool showConnector;
-  final VoidCallback? onTap;
-  final ValueChanged<ActivityStatus>? onStatusChange;
+  final VoidCallback? onEdit; // 编辑回调
+  final ActivityStatus? uiStatus; // 前端管理的UI状态，主要用于旅行模式
+  final ValueChanged<ActivityStatus>? onStatusChange; // 旅行模式下状态改变的回调
 
-  const ActivityCard({
+  const ActivityDisplayCard({
     super.key,
     required this.activity,
     required this.mode,
-    this.showConnector = true,
-    this.onTap,
+    this.onEdit,
+    this.uiStatus,
     this.onStatusChange,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color cardColor = Colors.white;
-    Color textColor = Colors.black87;
-    // IconData statusIcon = Icons.hourglass_empty_outlined; // 移除，不再直接使用
-    Color statusIndicatorColor = Colors.grey; // 用于状态Chip的背景
+    bool isOngoing = mode == TripMode.travel && uiStatus == ActivityStatus.ongoing;
+    bool isCompleted = mode == TripMode.travel && uiStatus == ActivityStatus.completed;
+    
+    Color cardBackgroundColor = Colors.white;
+    Color titleColor = Colors.black87;
+    BoxShadow cardShadow = BoxShadow(color: Colors.grey.withOpacity(0.15), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, 2));
 
-    if (mode == TripMode.travel) {
-      switch (activity.status) {
-        case ActivityStatus.pending:
-          cardColor = Colors.white;
-          statusIndicatorColor = Colors.grey.shade400;
-          break;
-        case ActivityStatus.ongoing:
-          cardColor = Theme.of(context).primaryColor.withOpacity(0.05); // 更淡的进行中背景
-          textColor = Theme.of(context).primaryColorDark;
-          statusIndicatorColor = Theme.of(context).primaryColor;
-          break;
-        case ActivityStatus.completed:
-          cardColor = Colors.grey.shade100; // 完成的卡片用更浅的灰色
-          textColor = Colors.grey.shade600;
-          statusIndicatorColor = Colors.green.shade600;
-          break;
-      }
+    if (isOngoing) {
+        cardBackgroundColor = Theme.of(context).primaryColor.withOpacity(0.05);
+        titleColor = Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor;
+        cardShadow = BoxShadow(color: Theme.of(context).primaryColor.withOpacity(0.2), spreadRadius: 2, blurRadius: 6, offset: const Offset(0, 3));
+    } else if (isCompleted) {
+        cardBackgroundColor = Colors.grey.shade50;
+        titleColor = Colors.grey.shade600;
+        cardShadow = BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 0.5, blurRadius: 3, offset: const Offset(0, 1));
     }
 
-    return Stack(
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16.0),
-          child: Card(
-            elevation: mode == TripMode.travel && activity.status == ActivityStatus.ongoing ? 3.0 : 1.0,
-            margin: const EdgeInsets.only(bottom: 16, left: 24),
-            color: cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: InkWell(
-              onTap: mode == TripMode.edit ? onTap : null,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      activity.description,
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: textColor,
-                        decoration: activity.status == ActivityStatus.completed ? TextDecoration.lineThrough : TextDecoration.none,
-                        decorationColor: Colors.grey[500],
-                        decorationThickness: 1.5,
-                      ),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      decoration: BoxDecoration(
+        color: cardBackgroundColor,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: [cardShadow],
+        border: isOngoing ? Border.all(color: Theme.of(context).primaryColor.withOpacity(0.5), width: 1.5) : null,
+      ),
+      child: Material( // 添加 Material Widget 以支持 InkWell 的 splash 效果
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: mode == TripMode.edit ? onEdit : null,
+          borderRadius: BorderRadius.circular(16.0),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 左侧时间显示 (更突出)
+                Padding(
+                  padding: const EdgeInsets.only(right: 16.0, top: 2),
+                  child: Text(
+                    activity.startTime ?? "待定",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isOngoing ? Theme.of(context).primaryColor : Colors.grey.shade700,
                     ),
-                    const SizedBox(height: 8),
-                    if (activity.location != null && activity.location!.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(Icons.location_on_outlined, size: 16, color: Colors.grey[600]),
-                          const SizedBox(width: 4),
-                          Expanded(child: Text(activity.location!, style: TextStyle(fontSize: 13, color: Colors.grey[600]))),
-                        ],
+                  ),
+                ),
+                // 右侧内容区域
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (activity.icon != null && activity.icon!.isNotEmpty)
+                          Icon(_getIconData(activity.icon!), color: titleColor, size: 22),
+                      Text(
+                        activity.title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                          decoration: isCompleted ? TextDecoration.lineThrough : null,
+                        ),
                       ),
-                    if (mode == TripMode.edit || mode == TripMode.view) ...[
-                      const SizedBox(height: 12),
+                      if (activity.location != null && activity.location!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, size: 15, color: Colors.grey[600]),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                activity.location!,
+                                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (activity.description != null && activity.description!.isNotEmpty) ...[
+                         const SizedBox(height: 6),
+                         Text(activity.description!, style: TextStyle(fontSize: 13, color: Colors.grey[600]), maxLines: 2, overflow: TextOverflow.ellipsis,),
+                      ],
+                      const SizedBox(height: 10),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.end, // 将按钮推到右边
                         children: [
-                          if (mode == TripMode.edit)
-                            TextButton(onPressed: onTap, child: const Text("编辑活动")),
+                           // 导航按钮 (图4样式)
+                          TextButton.icon(
+                              icon: Icon(Icons.navigation_outlined, size: 18, color: Theme.of(context).colorScheme.secondary),
+                              label: Text("导航", style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                              onPressed: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("导航功能待实现"))); },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                minimumSize: const Size(50,30),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                // backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.05), // 可选背景
+                              ),
+                          ),
+                          if (mode == TripMode.edit) ...[
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: onEdit,
+                              child: const Text("编辑", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                               style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                minimumSize: const Size(50,30),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
+                              ),
+                            ),
+                          ],
+                          // 旅行模式下的状态切换按钮 (若需要，可在此添加)
                         ],
                       )
                     ],
-                    if (mode == TripMode.travel) ... [
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: ActivityStatus.values.map((s) {
-                          bool isCurrent = activity.status == s;
-                          String statusText;
-                          switch(s) {
-                            case ActivityStatus.pending: statusText = "待办"; break;
-                            case ActivityStatus.ongoing: statusText = "进行中"; break;
-                            case ActivityStatus.completed: statusText = "完成"; break;
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 4.0),
-                            child: ChoiceChip(
-                              label: Text(statusText, style: TextStyle(fontSize: 10, color: isCurrent ? Colors.white : Colors.black54)),
-                              selected: isCurrent,
-                              onSelected: (selected) {
-                                if (selected && onStatusChange != null) {
-                                  onStatusChange!(s);
-                                }
-                              },
-                              selectedColor: statusIndicatorColor, // 使用动态的状态颜色
-                              backgroundColor: Colors.grey.shade200, // 未选中时的背景色
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          );
-                        }).toList(),
-                      )
-                    ]
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          child: SizedBox(
-            width: 40,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.grey[300]!)
                   ),
-                  child: Text(activity.time.split('-')[0].trim(), style: TextStyle(fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.w500)),
                 ),
-                if (showConnector)
-                  Expanded(
-                    child: CustomPaint(
-                      painter: LineConnectorPainter(
-                          lineColor: Colors.grey.shade300,
-                          transportText: activity.transportToNext,
-                          durationText: activity.transportDuration
-                      ),
-                      child: Container(), // 确保 CustomPaint 有子Widget以确定其大小
-                    ),
-                  )
-                else
-                  const SizedBox(height: 20), // 为最后一个卡片底部留白
               ],
             ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  IconData _getIconData(String iconName) {
+    switch (iconName.toLowerCase()) {
+      case 'restaurant': case 'food': case 'meal': return Icons.restaurant_menu_rounded;
+      case 'hotel': case 'sleep': case 'accommodation': return Icons.hotel_rounded;
+      case 'flight': case 'plane': return Icons.flight_takeoff_rounded;
+      case 'train': return Icons.train_rounded;
+      case 'bus': return Icons.directions_bus_rounded;
+      case 'car': case 'taxi': case 'drive': return Icons.directions_car_rounded;
+      case 'walk': return Icons.directions_walk_rounded;
+      case 'museum': case 'art': return Icons.museum_rounded;
+      case 'landmark': case 'sightseeing': return Icons.camera_alt_rounded;
+      case 'shopping': return Icons.shopping_bag_rounded;
+      case 'activity': return Icons.local_activity_rounded;
+      default: return Icons.place_rounded;
+    }
+  }
+}
+
+/// 用于在活动卡片之间显示交通连接线和信息的 Widget
+class TransportConnector extends StatelessWidget {
+  final String? transportationMode; // 如："步行", "驾车"
+  final int? durationMinutes;    // 如：30 (分钟)
+
+  const TransportConnector({
+    super.key,
+    this.transportationMode,
+    this.durationMinutes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (transportationMode == null && durationMinutes == null) {
+      // 如果没有交通信息，可以显示一条简单的虚线或占位符
+      return Container(
+        height: 40, // 默认高度
+        margin: const EdgeInsets.only(left: 32.0), // 与卡片内容左侧大致对齐
+        alignment: Alignment.centerLeft,
+        child: CustomPaint(
+          painter: LineConnectorPainter(lineColor: Colors.grey.shade300),
+          size: const Size(20, double.infinity), // 线条的宽度和填充父级高度
+        ),
+      );
+    }
+    
+    String durationText = "";
+    if (durationMinutes != null) {
+      if (durationMinutes! >= 60) {
+        durationText = "${(durationMinutes! / 60).floor()}小时";
+        if (durationMinutes! % 60 != 0) {
+           durationText += " ${(durationMinutes! % 60)}分钟";
+        }
+      } else {
+        durationText = "$durationMinutes分钟";
+      }
+    }
+
+    return Container(
+      height: 50, // 根据需要调整高度
+      margin: const EdgeInsets.only(left: 32.0), // 与卡片内容左侧大致对齐，给图标和文字留空间
+      alignment: Alignment.centerLeft,
+      child: CustomPaint(
+        painter: LineConnectorPainter(
+          lineColor: Colors.grey.shade300,
+          transportText: transportationMode,
+          durationText: durationText.isNotEmpty ? durationText : null,
+        ),
+        child: Container(), // CustomPaint 需要一个 child 来确定其绘制区域
+        size: const Size(100, double.infinity), // 为 Painter 提供宽度，高度将撑满父级
+      ),
     );
   }
 }
