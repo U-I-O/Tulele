@@ -63,11 +63,11 @@ class _NotificationCenterPageState extends State<NotificationCenterPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.science_outlined),
-            tooltip: '通知测试',
-            onPressed: () {
+              tooltip: '通知测试',
+              onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const NotificationTestPage()), // 确保这里正确导航
+                MaterialPageRoute(builder: (context) => const TestNotificationPage(null)), // 确保这里正确导航
               );
             },
           ),

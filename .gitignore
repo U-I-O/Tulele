@@ -17,6 +17,7 @@
 /途乐乐功能设计计划书/
 
 # Don't ignore these specific files in the root directory
+!android\app\src\main\res
 !.gitignore
 !pubspec.yaml
 !pubspec.lock

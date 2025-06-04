@@ -1,392 +1,591 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data'; // 添加导入Int32List
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart'; // For Color
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz_data;
 
-// 添加Android 12+ 的配置
-class NotificationConfig {
-  // Android 12+ 需要确保PendingIntent的可变性
-  static Int32List getAndroidNotificationFlags() {
-    if (Platform.isAndroid) {
-      try {
-        // Bit flags: FLAG_IMMUTABLE(67108864) 或 FLAG_MUTABLE(33554432)，取决于你的需求
-        // 对于按钮点击，我们需要MUTABLE确保能接收返回的结果
-        return Int32List.fromList([33554432]); // FLAG_MUTABLE 
-      } catch (e) {
-        debugPrint("通知配置: 获取Android通知flags异常: $e");
-      }
-    }
-    return Int32List.fromList([]);
-  }
+import 'plugin.dart'; // 提供了 flutterLocalNotificationsPlugin
 
-  // 获取Android通知全局配置
-  static AndroidInitializationSettings getAndroidSettings() {
-    return const AndroidInitializationSettings('@mipmap/ic_launcher');
+// 用于接收通知响应的流控制器
+final StreamController<NotificationResponse> selectNotificationStream =
+    StreamController<NotificationResponse>.broadcast();
+
+// 方法通道，用于与原生代码通信
+const MethodChannel platform =
+    MethodChannel('dexterx.dev/flutter_local_notifications_example');
+
+// 用于通知发送的端口名称
+const String portName = 'notification_send_port';
+
+String? selectedNotificationPayload; // 由 main.dart 逻辑管理 -> 将通过函数返回值传递
+
+// 通知操作ID
+const String urlLaunchActionId = 'id_1'; // URL启动操作ID
+const String navigationActionId = 'id_3'; // 导航操作ID
+
+// Darwin (iOS/macOS) 通知分类
+const String darwinNotificationCategoryText = 'textCategory'; // 文本输入分类
+const String darwinNotificationCategoryPlain = 'plainCategory'; // 普通分类
+
+bool notificationsEnabled = false;
+
+/// 当应用在后台或终止时，通知被点击的回调处理函数
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) {
+  // 处理后台点击通知的逻辑
+  debugPrint('通知服务 (_notificationTapBackground): 后台通知点击回调触发于 ${DateTime.now()}');
+  debugPrint('通知服务 (_notificationTapBackground): 接收到通知返回 (background tap) - payload: ${notificationResponse.payload}, actionId: ${notificationResponse.actionId}, input: ${notificationResponse.input}');
+
+  // 如果有 actionId，说明用户点击了通知上的某个操作按钮
+  if (notificationResponse.actionId != null && notificationResponse.actionId!.isNotEmpty) {
+    debugPrint('通知服务 (_notificationTapBackground): 用户点击了操作按钮: ${notificationResponse.actionId}');
   }
+  // 根据 payload 或 actionId 执行特定操作
+  if (notificationResponse.payload != null && notificationResponse.payload!.isNotEmpty) {
+    debugPrint('通知服务 (_notificationTapBackground): 正在处理 payload: ${notificationResponse.payload}');
+  }
+  if (notificationResponse.input != null && notificationResponse.input!.isNotEmpty) {
+    debugPrint('通知服务 (_notificationTapBackground): 收到用户输入: ${notificationResponse.input}');
+  }
+  debugPrint('通知服务 (_notificationTapBackground): 后台通知点击处理完毕。');
 }
 
-/// 通知操作按钮定义
-class NotificationAction {
-  final String id;
-  final String title;
-  final String? icon;
-
-  NotificationAction({
-    required this.id, 
-    required this.title, 
-    this.icon,
+/// 接收到的通知的数据模型
+class ReceivedNotification {
+  ReceivedNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.payload,
+    this.data,
   });
+
+  final int id; // 通知ID
+  final String? title; // 通知标题
+  final String? body; // 通知正文
+  final String? payload; // 通知负载数据
+  final Map<String, dynamic>? data; // 额外数据
 }
 
-/// 通知服务 - 支持Android和iOS平台的锁屏通知、横幅通知和自定义操作按钮
-class NotificationService {
-  // 单例模式
-  static final NotificationService _instance = NotificationService._internal();
-  factory NotificationService() => _instance;
-  NotificationService._internal();
+// 全局通知ID计数器
+int _notificationIdCounter = 0;
 
-  // 通知插件实例
-  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin = 
-      FlutterLocalNotificationsPlugin();
-  
-  // 点击通知时的回调函数 (由 configureNotificationListeners 设置)
-  Function(String?)? _onNotificationTapCallback;
-  
-  // 点击通知操作按钮时的回调函数 (由 configureNotificationListeners 设置)
-  Function(String?, String?)? _onActionTapCallback;
-
-  // 用于iOS类别注册时保存主要的回调
-  Function(NotificationResponse)? _mainOnDidReceiveNotificationResponseHandler;
-  Function(NotificationResponse)? _mainOnDidReceiveBackgroundNotificationResponseHandler;
-
-
-  // 存储已注册的iOS DarwinNotificationCategory 列表
-  final List<DarwinNotificationCategory> _accumulatedDarwinCategories = [];
-
-  /// 内部统一处理通知响应的回调函数
-  void _handlePluginNotificationResponse(NotificationResponse details) {
-    debugPrint("通知服务: _handlePluginNotificationResponse 已触发!");
-    debugPrint("通知服务: 响应类型: ${details.notificationResponseType}");
-    debugPrint("通知服务: Payload: ${details.payload}");
-    debugPrint("通知服务: ActionID: ${details.actionId}");
-    debugPrint("通知服务: 用户输入: ${details.input}");
-
-    if (details.notificationResponseType == NotificationResponseType.selectedNotification) {
-      debugPrint("通知服务: 通知被点击 (前台/应用恢复时)");
-      if (_onNotificationTapCallback != null) {
-        _onNotificationTapCallback!(details.payload);
-      } else {
-        debugPrint("通知服务: _onNotificationTapCallback 回调未设置!");
-      }
-    } else if (details.notificationResponseType == NotificationResponseType.selectedNotificationAction) {
-      debugPrint("通知服务: 通知操作按钮被点击 (前台/应用恢复时)");
-      if (_onActionTapCallback != null) {
-        debugPrint("通知服务: 调用 _onActionTapCallback - ActionID: ${details.actionId}, Payload: ${details.payload}");
-        _onActionTapCallback!(details.actionId, details.payload);
-      } else {
-        debugPrint("通知服务: _onActionTapCallback 回调未设置!");
-      }
-    }
+// --- 时区配置 ---
+/// 配置本地时区
+Future<void> _configureLocalTimeZone() async {
+  if (kIsWeb || Platform.isLinux) {
+    // Web 和 Linux 平台不需要额外配置
+    return;
   }
-
-  /// 初始化通知服务
-  Future<void> init({Function(NotificationResponse)? onBackgroundResponse}) async {
-    tz_data.initializeTimeZones(); 
-    
-    // 保存后台回调以备后用
-    _mainOnDidReceiveBackgroundNotificationResponseHandler = onBackgroundResponse;
-    // _mainOnDidReceiveNotificationResponseHandler 将直接使用 _handlePluginNotificationResponse
-    
-    // 使用全局配置获取Android设置
-    final AndroidInitializationSettings androidSettings = NotificationConfig.getAndroidSettings();
-    
-    // iOS初始化设置
-    // 注意：在NotificationService的init中，notificationCategories通常是动态注册的，
-    // 所以初始时为空，后续通过registerNotificationCategory添加。
-    // 如果有需要在服务初始化时就固定的iOS类别，也可以在这里添加。
-    final DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-      notificationCategories: _accumulatedDarwinCategories, // 初始为空，后续通过 register 更新
-    );
-    
-    // 初始化设置
-    final InitializationSettings initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-    
-    // 初始化插件
-    await _flutterLocalNotificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _handlePluginNotificationResponse, // 使用统一处理函数
-      onDidReceiveBackgroundNotificationResponse: _mainOnDidReceiveBackgroundNotificationResponseHandler,
-    );
-
-    debugPrint("通知服务: 初始化完成！测试日志输出正常。");
-
-    // (新增) 创建Android通知渠道
-    if (Platform.isAndroid) {
-      // ... (Android渠道创建逻辑保持不变)
-      const AndroidNotificationChannel tripChannel = AndroidNotificationChannel(
-        'trip_status_channel', 
-        '行程状态通知',        
-        description: '用于通知行程的开始、进行中和结束状态。', 
-        importance: Importance.max, 
-        playSound: true,
-      );
-      const AndroidNotificationChannel defaultChannel = AndroidNotificationChannel(
-        'default_channel',    // 即时通知使用的渠道 ID
-        '默认通知',             // 渠道名称
-        description: '应用的默认通知频道。', // 渠道描述
-        importance: Importance.high, 
-        playSound: true,
-      );
-
-      final androidImplementation = _flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-
-      try {
-        await androidImplementation?.createNotificationChannel(tripChannel);
-        await androidImplementation?.createNotificationChannel(defaultChannel); // 创建默认通知渠道
-        debugPrint("通知服务: Android通知渠道创建成功");
-      } catch (e) {
-        debugPrint('通知服务: 创建通知渠道异常: $e');
-      }
-    }
+  tz.initializeTimeZones(); // 初始化时区数据
+  if (Platform.isWindows) {
+    // Windows 平台无需通过 flutter_timezone 获取
+    return;
   }
-  
-  /// 请求通知权限 (添加详细的权限检查和日志)
-  Future<bool> requestPermission() async {
-    if (Platform.isIOS) {
-      debugPrint("通知服务: 请求iOS通知权限");
-      final bool result = await _flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          ) ?? false;
-      debugPrint("通知服务: iOS通知权限请求结果: $result");
-      return result;
-    } else if (Platform.isAndroid) {
-      // Android 13及以上版本需要请求通知权限
-      debugPrint("通知服务: 请求Android通知权限");
-      final androidImplementation = _flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      final bool result = await androidImplementation?.requestNotificationsPermission() ?? false;
-      debugPrint("通知服务: Android通知权限请求结果: $result");
-      return result;
-    }
-    debugPrint("通知服务: 当前平台不支持请求通知权限");
-    return false;
-  }
+  final String? timeZoneName = await FlutterTimezone.getLocalTimezone(); // 获取本地时区名称
+  tz.setLocalLocation(tz.getLocation(timeZoneName!)); // 设置本地时区
+}
 
-  /// 注册通知操作类别（iOS平台）- 修正版
-  Future<void> registerNotificationCategory(String categoryId, List<NotificationAction> actions) async {
-    if (Platform.isIOS) {
-      debugPrint("通知服务: 开始为iOS注册类别 '$categoryId'");
-      
-      // 将新的 Category Action 转换为 DarwinNotificationAction
-      final List<DarwinNotificationAction> darwinActions = actions.map((action) =>
+// 新增的公共初始化函数
+Future<NotificationResponse?> initializeNotificationService() async { // 修改返回类型
+  // 1. 配置本地时区
+  await _configureLocalTimeZone();
+
+  // 2. 定义各种初始化设置
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher'); // 确保这个 drawable 存在
+
+  final List<DarwinNotificationCategory> darwinNotificationCategories =
+      <DarwinNotificationCategory>[
+    DarwinNotificationCategory(
+      darwinNotificationCategoryText, // 使用 service 内定义的常量
+      actions: <DarwinNotificationAction>[
+        DarwinNotificationAction.text(
+          'text_1', // TODO: Consider making this a const in the service
+          '回复',
+          buttonTitle: '发送',
+          placeholder: '请输入回复内容',
+        ),
+      ],
+    ),
+    DarwinNotificationCategory(
+      darwinNotificationCategoryPlain, // 使用 service 内定义的常量
+      actions: <DarwinNotificationAction>[
+        DarwinNotificationAction.plain('id_1', '动作 1'), // TODO: Consider making this a const
         DarwinNotificationAction.plain(
-          action.id,
-          action.title,
+          'id_2', // TODO: Consider making this a const
+          '动作 2 (iOS destructive)',
           options: <DarwinNotificationActionOption>{
-            DarwinNotificationActionOption.foreground, // 点击按钮后打开App
+            DarwinNotificationActionOption.destructive,
           },
-        )
-      ).toList();
+        ),
+        DarwinNotificationAction.plain(
+          navigationActionId, // 使用 service 内定义的常量
+          '导航动作',
+          options: <DarwinNotificationActionOption>{
+            DarwinNotificationActionOption.foreground,
+          },
+        ),
+      ],
+      options: <DarwinNotificationCategoryOption>{
+        DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+      },
+    )
+  ];
 
-      // 创建新的 DarwinNotificationCategory
-      final newCategory = DarwinNotificationCategory(
-        categoryId,
-        actions: darwinActions,
-        options: <DarwinNotificationCategoryOption>{
-          DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
-        },
-      );
+  final DarwinInitializationSettings initializationSettingsDarwin =
+      DarwinInitializationSettings(
+    requestAlertPermission: false, // 权限请求将在下面统一处理
+    requestBadgePermission: false,
+    requestSoundPermission: false,
+    notificationCategories: darwinNotificationCategories,
+  );
 
-      // 添加到累积列表 (如果已存在同名 categoryId，则替换)
-      _accumulatedDarwinCategories.removeWhere((cat) => cat.identifier == categoryId);
-      _accumulatedDarwinCategories.add(newCategory);
-      
-      // 重新初始化iOS部分以应用更新的类别列表
-      // 注意：Android设置保持不变，iOS权限请求相关的也应设为false，因为权限应在init时请求一次
-      const AndroidInitializationSettings androidSettings = 
-          AndroidInitializationSettings('@mipmap/ic_launcher'); // 或保持一个常量实例
-      
-      final DarwinInitializationSettings updatedIosSettings = DarwinInitializationSettings(
-        requestAlertPermission: false, // 不再重复请求权限
-        requestBadgePermission: false,
-        requestSoundPermission: false,
-        notificationCategories: _accumulatedDarwinCategories, // 使用累积的完整列表
-      );
-      
-      final InitializationSettings initSettings = InitializationSettings(
-        android: androidSettings,
-        iOS: updatedIosSettings,
-      );
-      
-      // 使用在 init 时保存的主回调函数重新初始化
-      await _flutterLocalNotificationsPlugin.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: _handlePluginNotificationResponse, // 使用统一处理函数
-        onDidReceiveBackgroundNotificationResponse: _mainOnDidReceiveBackgroundNotificationResponseHandler,
-      );
-      debugPrint("通知服务: iOS Category '$categoryId' 已注册/更新，当前总类别数: ${_accumulatedDarwinCategories.length}");
-    }
+  final InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsDarwin,
+    macOS: initializationSettingsDarwin,
+  );
+
+  // 3. 初始化插件并设置回调
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse:
+        (NotificationResponse notificationResponse) {
+      // 应用在前台时点击通知
+      debugPrint('通知服务 (onDidReceiveNotificationResponse): 前台通知点击回调触发于 ${DateTime.now()}');
+      debugPrint('通知服务 (onDidReceiveNotificationResponse): 接收到通知返回 (foreground tap) - payload: ${notificationResponse.payload}, actionId: ${notificationResponse.actionId}, input: ${notificationResponse.input}');
+      if (notificationResponse.input != null && notificationResponse.input!.isNotEmpty) {
+        debugPrint('通知服务 (onDidReceiveNotificationResponse): 收到用户输入: ${notificationResponse.input}');
+      }
+      selectNotificationStream.add(notificationResponse);
+    },
+
+    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+  );
+  debugPrint('通知服务: 初始化插件配置完成');
+
+  // 4. 请求权限
+  if (Platform.isAndroid) {
+    await requestAndroidNotificationsPermission();
+  }
+  if (Platform.isIOS || Platform.isMacOS) {
+    await requestIOSMacOSPermissions();
   }
 
-  /// 显示通知 (保持showNotification方法结构，内部调用_getAndroidActions)
-  Future<void> showNotification({
-    required int id,
-    required String title,
-    required String body,
-    String? payload,
-    List<NotificationAction>? actions,
-    String? categoryId, // 用于iOS
-    String? androidLargeIconPath, // Android large icon (本地文件路径)
-    String? androidBigPicturePath, // Android BigPictureStyle image (本地文件路径)
-    String? iOSAttachmentPath,     // iOS attachment image (本地文件路径)
-  }) async {
-    // 获取Android操作按钮的同时添加详细日志
-    final List<AndroidNotificationAction>? androidActions = _getAndroidActions(actions);
-    debugPrint("通知服务 showNotification: 准备发送通知 id=$id, 标题=\"$title\"");
-    debugPrint("通知服务 showNotification: 准备传递给 AndroidNotificationDetails 的 actions: ${androidActions?.length ?? 0}个");
-    
-    // 详细记录每个按钮
-    if (androidActions != null) {
-      for (var action in androidActions) {
-        debugPrint("通知服务 showNotification: Android Action: id=${action.id}, title=${action.title}");
-      }
-    }
+  final NotificationAppLaunchDetails? notificationAppLaunchDetails = !kIsWeb &&
+          Platform.isLinux//linux平台需要特殊赋值--null
+      ? null
+      : await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();//获取通知应用启动详情
 
-    // Android 12+ 特殊处理
-    Int32List androidFlags = NotificationConfig.getAndroidNotificationFlags();
-    debugPrint("通知服务: 使用Android通知标志: $androidFlags");
+  NotificationResponse? initialResponse;
 
-    AndroidBitmap<String>? largeIconBitmap = androidLargeIconPath != null && androidLargeIconPath.isNotEmpty 
-        ? FilePathAndroidBitmap(androidLargeIconPath) 
-        : null;
-    
-    StyleInformation? styleInformation;
-    if (androidBigPicturePath != null && androidBigPicturePath.isNotEmpty) {
-      styleInformation = BigPictureStyleInformation(
-        FilePathAndroidBitmap(androidBigPicturePath),
-        largeIcon: largeIconBitmap, // BigPictureStyle 也可以有自己的 largeIcon
-        contentTitle: title, // 可选，覆盖通知标题
-        htmlFormatContentTitle: true,
-        summaryText: body, // 可选，覆盖通知内容文本
-        htmlFormatSummaryText: true,
-      );
-    }
+  if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {//应用是否是通过点击一个通知启动的？"
+    // selectedNotificationPayload = notificationAppLaunchDetails!.notificationResponse?.payload;//下面的response的payload即可访问这一条
+    initialResponse = notificationAppLaunchDetails!.notificationResponse;
+    debugPrint('通知服务: 应用通过通知启动。 Payload: ${initialResponse?.payload}, ActionID: ${initialResponse?.actionId}');
+  }
 
-    // 更新 AndroidNotificationDetails 创建逻辑，添加 flags
-    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'default_channel', 
-      '默认通知',
-      channelDescription: '应用的默认通知频道。',
-      importance: Importance.high,
+
+  debugPrint('通知服务: 初始化完成');
+  return initialResponse; // 返回获取到的响应
+}
+
+// --- 权限方法 ---
+
+///检查权限
+Future<void> checkAndroidPermission() async {
+  if (Platform.isAndroid) {
+    final bool granted = await isAndroidPermissionGranted();
+    notificationsEnabled = granted;
+  }
+}
+
+/// 检查 Android 通知权限是否已授予
+Future<bool> isAndroidPermissionGranted() async {
+  if (Platform.isAndroid) {
+    final bool granted = await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.areNotificationsEnabled() ??
+        false;
+    return granted;
+  }
+  // 其他平台，假设已授予或处理其特定的权限模型
+  return true;
+}
+
+/// 请求 Android 通知权限
+Future<bool?> requestAndroidNotificationsPermission() async {
+  if (Platform.isAndroid) {
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    return await androidImplementation?.requestNotificationsPermission();
+  }
+  return null;
+}
+
+/// 请求 iOS 和 macOS 通知权限
+/// [critical] 是否请求紧急通知权限 (iOS)
+Future<void> requestIOSMacOSPermissions({bool critical = false}) async {
+  if (Platform.isIOS) {
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true, // 请求显示提醒权限
+          badge: true, // 请求应用角标权限
+          sound: true, // 请求播放声音权限
+          critical: critical, // 是否请求紧急通知权限
+        );
+  }
+  if (Platform.isMacOS) {
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+          critical: critical,
+        );
+  }
+}
+
+/// (Android 特定) 请求访问通知策略的权限 (例如，勿扰模式)
+Future<void> requestNotificationPolicyAccess() async {
+  if (Platform.isAndroid) {
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidImplementation?.requestNotificationPolicyAccess();
+  }
+}
+
+///请求权限
+Future<void> requestPermissions() async {
+  if (Platform.isIOS || Platform.isMacOS) {
+    await requestIOSMacOSPermissions();
+  } else if (Platform.isAndroid) {
+    final bool? granted = await requestAndroidNotificationsPermission();
+    notificationsEnabled = granted ?? false;
+  }
+}
+
+// --- 通知显示方法 ---
+/// 显示带有操作按钮的通知
+Future<void> showNotificationWithActions() async {
+  const AndroidNotificationDetails androidNotificationDetails =
+      AndroidNotificationDetails(
+    'channel_id_actions', // 渠道ID
+    '操作通知渠道', // 渠道名称
+    channelDescription: '用于显示带操作按钮的通知', // 渠道描述
+    importance: Importance.max,
+    priority: Priority.high,
+    ticker: '通知来了',
+    actions: <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        urlLaunchActionId,
+        '打开链接',
+        icon: DrawableResourceAndroidBitmap('food'), // 假设 'food' 是一个有效的 drawable 资源
+        contextual: true,
+      ),
+      AndroidNotificationAction(
+        'id_2',
+        '动作2',
+        titleColor: Color.fromARGB(255, 255, 0, 0),
+        icon: DrawableResourceAndroidBitmap('secondary_icon'), // 假设 'secondary_icon' 是一个有效的 drawable 资源
+      ),
+      AndroidNotificationAction(
+        navigationActionId,
+        '导航',
+        icon: DrawableResourceAndroidBitmap('secondary_icon'),
+        showsUserInterface: true, // 点击时显示应用界面
+        cancelNotification: false, // 点击时不取消通知
+      ),
+    ],
+  );
+
+  const DarwinNotificationDetails iosNotificationDetails =
+      DarwinNotificationDetails(
+    categoryIdentifier: darwinNotificationCategoryPlain, // 使用普通分类
+  );
+
+  final NotificationDetails notificationDetails = NotificationDetails(
+    android: androidNotificationDetails,
+    iOS: iosNotificationDetails,
+  );
+  await flutterLocalNotificationsPlugin.show(
+      _notificationIdCounter++, '普通标题', '普通正文', notificationDetails,
+      payload: '项目 Z');
+}
+
+/// 显示带有文本输入操作的通知
+Future<void> showNotificationWithTextAction() async {
+  const AndroidNotificationDetails androidNotificationDetails =
+      AndroidNotificationDetails(
+    'channel_id_text_input',//(Android) 区分通知渠道，用户可以在系统设置中管理此渠道的通知行为。
+    '文本输入通知渠道',
+    channelDescription: '用于显示带文本输入操作的通知',// 用户可见的渠道描述。
+    importance: Importance.max,
+    priority: Priority.high,
+    ticker: '通知来了',
+    actions: <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        'text_id_1',//(动作ID): 关键参数。当用户点击这个带输入的按钮并提交后，这个 ID 会包含在 NotificationResponse 的 actionId 字段中。
+        '输入文本',//用户在通知上看到的按钮文字。
+        icon: DrawableResourceAndroidBitmap('me'),//(Android) 按钮图标。
+        inputs: <AndroidNotificationActionInput>[
+          AndroidNotificationActionInput(
+            label: '请在此输入回复...',
+          ),
+        ],
+      ),
+    ],
+  );
+
+  const DarwinNotificationDetails darwinNotificationDetails =
+      DarwinNotificationDetails(
+    categoryIdentifier: darwinNotificationCategoryText, // 使用文本输入分类
+  );
+  
+  const NotificationDetails notificationDetails = NotificationDetails(
+    android: androidNotificationDetails,
+    iOS: darwinNotificationDetails,
+  );
+
+  debugPrint('通知服务: 显示带有文本输入操作的通知');
+
+  await flutterLocalNotificationsPlugin.show(_notificationIdCounter++, '文本输入通知',
+  '展开查看输入操作', notificationDetails,
+  payload: '项目 X');//payload 会原样传递到 NotificationResponse 的 payload 字段。您可以用来识别是哪个类型的通知被点击了。 
+}
+
+/// 显示带有文本选项的通知
+Future<void> showNotificationWithTextChoice() async {
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+      'channel_id_text_choice',
+      '文本选择通知渠道',
+      channelDescription: '用于显示带文本选项的通知',
+      importance: Importance.max,
       priority: Priority.high,
-      actions: androidActions,
-      largeIcon: largeIconBitmap, // 设置 largeIcon (如果 BigPictureStyle 不用)
-      styleInformation: styleInformation, // 设置 styleInformation (如 BigPictureStyle)
-      // 添加Android 12+ 支持的flag
-      fullScreenIntent: true, // 尝试使用全屏显示通知
-      playSound: true, 
-      ongoing: false, // 是否持续显示，除非手动清除
-      autoCancel: true, // 点击后自动清除
-      category: AndroidNotificationCategory.message, // 使用正确的枚举类型
-      additionalFlags: androidFlags, // 使用定制的flags
+      ticker: '通知来了',
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'text_id_2',
+          '选择操作',
+          icon: DrawableResourceAndroidBitmap('food'),
+          inputs: <AndroidNotificationActionInput>[
+            AndroidNotificationActionInput(
+              choices: <String>['选项A', '选项B'],
+              allowFreeFormInput: false, // 不允许自由输入
+            ),
+          ],
+          contextual: true,
+        ),
+      ],
     );
 
-    // iOS通知详情
-    List<DarwinNotificationAttachment>? iosAttachments;
-    if (iOSAttachmentPath != null && iOSAttachmentPath.isNotEmpty) {
-      try {
-        iosAttachments = [DarwinNotificationAttachment(iOSAttachmentPath)];
-        debugPrint("通知服务: 创建iOS图片附件: $iOSAttachmentPath");
-      } catch (e) {
-        debugPrint("通知服务: 创建iOS图片附件失败: $e");
-      }
-    }
-
-    DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      categoryIdentifier: categoryId, // iOS使用这个来关联已注册的Category
-      interruptionLevel: InterruptionLevel.active,
-      attachments: iosAttachments ?? [], // 添加附件
+    const DarwinNotificationDetails darwinNotificationDetails =
+        DarwinNotificationDetails(
+      categoryIdentifier: darwinNotificationCategoryText, // 使用文本输入分类
     );
 
-    NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: darwinNotificationDetails,
     );
 
-    try {
-      await _flutterLocalNotificationsPlugin.show(
-        id,
-        title,
-        body,
-        notificationDetails,
-        payload: payload,
-      );
-      debugPrint("通知服务: ID=$id 的通知发送成功");
-    } catch (e) {
-      debugPrint("通知服务: 发送通知失败: $e");
-    }
+    debugPrint('通知服务: 显示带有文本选项的通知');
+
+    await flutterLocalNotificationsPlugin.show(
+        _notificationIdCounter++, '普通标题', '普通正文', notificationDetails,
+        payload: '项目 X');
   }
 
-  /// 取消指定ID的通知 (保持不变)
-  Future<void> cancelNotification(int id) async {
-    await _flutterLocalNotificationsPlugin.cancel(id);
-  }
+/// 显示自定义声音的通知
+Future<void> showNotificationCustomSound() async {
+  const AndroidNotificationDetails androidNotificationDetails =
+      AndroidNotificationDetails(
+    'channel_id_custom_sound',
+    '自定义声音渠道',
+    channelDescription: '用于播放自定义声音的通知',
+    sound: RawResourceAndroidNotificationSound('slow_spring_board'), // Corrected: No file extension
+    importance: Importance.max, // Ensure high importance for sound
+    priority: Priority.high,    // Ensure high priority for sound
+  );
+  const DarwinNotificationDetails darwinNotificationDetails =
+      DarwinNotificationDetails(
+    sound: 'slow_spring_board.aiff', // For iOS, if you have this .aiff file in the bundle
+  );
 
-  /// 取消所有通知 (保持不变)
-  Future<void> cancelAllNotifications() async {
-    await _flutterLocalNotificationsPlugin.cancelAll();
-  }
+  final NotificationDetails notificationDetails = NotificationDetails(
+    android: androidNotificationDetails,
+    iOS: darwinNotificationDetails,
+    // macOS: darwinNotificationDetails, // If also providing for macOS
+  );
+  await flutterLocalNotificationsPlugin.show(
+    _notificationIdCounter++,
+    '自定义声音通知标题',
+    '自定义声音通知正文',
+    notificationDetails,
+  );
+}
 
-  /// 配置通知监听器 (这些回调由 _handlePluginNotificationResponse 内部调用)
-  void configureNotificationListeners({
-    Function(String?)? onTap,
-    Function(String?, String?)? onAction,
-  }) {
-    _onNotificationTapCallback = onTap;
-    _onActionTapCallback = onAction;
-    debugPrint("通知服务: 监听器已配置。 onTap: ${onTap!=null}, onAction: ${onAction!=null}");
-  }
-
-  /// 获取Android通知操作按钮 (保持不变)
-  List<AndroidNotificationAction>? _getAndroidActions(List<NotificationAction>? actions) {
-    debugPrint("通知服务: _getAndroidActions 执行，传入的 actions: $actions");
-    if (actions == null || actions.isEmpty) {
-      debugPrint("通知服务: 未提供 actions 或 actions 列表为空。");
-      return null;
-    }
-    
-    final androidActions = actions.map((action) {
-      debugPrint("通知服务: 处理 action: id=${action.id}, title=${action.title}, icon=${action.icon}");
-      if (action.icon != null) {
-        return AndroidNotificationAction(
-          action.id,
-          action.title,
-          icon: DrawableResourceAndroidBitmap(action.icon!),
+/// 在指定本地时间安排一个通知
+Future<void> zonedScheduleNotification() async {
+  try {
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+        _notificationIdCounter++,
+        '预定通知标题',
+        '预定通知正文',
+        tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5)),
+        const NotificationDetails(
+            android: AndroidNotificationDetails(
+                'channel_id_scheduled', '预定通知渠道',
+                channelDescription: '用于预定通知的渠道'
+                )),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         );
-      } else {
-        return AndroidNotificationAction(
-          action.id,
-          action.title,
-        );
-      }
-    }).toList();
-    debugPrint("通知服务: 转换后的 Android actions: $androidActions");
-    return androidActions;
+  } on PlatformException catch (e) {
+    if (e.code == 'exact_alarms_not_permitted') {
+      debugPrint('错误：无法安排精确闹钟。应用可能缺少 SCHEDULE_EXACT_ALARM 权限，或者用户未授予。');
+    } else {
+      print('安排预定通知时发生 PlatformException: ${e.message ?? e.details}');
+    }
+  } catch (e) {
+    print('安排预定通知时发生未知错误: $e');
   }
+}
+
+/// 静默显示通知 (没有声音或振动)
+Future<void> showNotificationSilently() async {
+  const AndroidNotificationDetails androidNotificationDetails =
+      AndroidNotificationDetails('channel_id_silent', '静默通知渠道',
+          channelDescription: '用于静默显示的通知',
+          importance: Importance.max,
+          priority: Priority.high,
+          ticker: '通知来了',
+          silent: true); // 设置为静默
+  const DarwinNotificationDetails darwinNotificationDetails =
+      DarwinNotificationDetails(
+    presentSound: false, // 不播放声音
+  );
+
+  final NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: darwinNotificationDetails,
+  );
+  await flutterLocalNotificationsPlugin.show(
+      _notificationIdCounter++, '<b>静默</b> 标题', '<b>静默</b> 正文', notificationDetails);
+}
+
+/// 取消所有通知
+Future<void> cancelAllNotifications() async {
+  await flutterLocalNotificationsPlugin.cancelAll();
+}
+
+/// 显示带有大图片并隐藏展开后的大图标的通知
+Future<void> showBigPictureNotificationHiddenLargeIcon() async {
+  final String largeIconPath =
+      await downloadAndSaveFile('https://dummyimage.com/48x48', 'largeIcon_zh');
+  final String bigPicturePath = await downloadAndSaveFile(
+      'https://dummyimage.com/400x800', 'bigPicture_zh');
+  final BigPictureStyleInformation bigPictureStyleInformation =
+      BigPictureStyleInformation(FilePathAndroidBitmap(bigPicturePath),
+          hideExpandedLargeIcon: true, // 展开时隐藏大图标
+          contentTitle: '重写的<b>大图</b>内容标题',
+          htmlFormatContentTitle: true,
+          summaryText: '摘要<i>文本</i>',
+          htmlFormatSummaryText: true);
+  final AndroidNotificationDetails androidNotificationDetails =
+      AndroidNotificationDetails(
+          'channel_id_big_picture', '大图通知渠道',
+          channelDescription: '用于显示大图的通知',
+          largeIcon: FilePathAndroidBitmap(largeIconPath),
+          styleInformation: bigPictureStyleInformation);
+  final NotificationDetails notificationDetails =
+      NotificationDetails(android: androidNotificationDetails);
+  await flutterLocalNotificationsPlugin.show(
+      _notificationIdCounter++, '大图通知标题', '静默正文', notificationDetails);
+}
+
+/// 下载文件并保存到应用文档目录
+/// [url] 文件下载地址
+/// [fileName] 保存的文件名
+/// 返回文件的本地路径
+Future<String> downloadAndSaveFile(String url, String fileName) async {
+  final Directory directory = await getApplicationDocumentsDirectory();
+  final String filePath = '${directory.path}/$fileName';
+  final http.Response response = await http.get(Uri.parse(url));
+  final File file = File(filePath);
+  await file.writeAsBytes(response.bodyBytes);
+  return filePath;
+}
+
+/// 显示进度条通知
+Future<void> showProgressNotification() async {
+  final int progressId = _notificationIdCounter++; // 为此系列通知使用唯一的ID
+  const int maxProgress = 5;
+  for (int i = 0; i <= maxProgress; i++) {
+    await Future<void>.delayed(const Duration(seconds: 1), () async {
+      final AndroidNotificationDetails androidNotificationDetails =
+          AndroidNotificationDetails('channel_id_progress', '进度通知渠道',
+              channelDescription: '显示进度的通知渠道',
+              channelShowBadge: false, // 不显示渠道角标
+              importance: Importance.max,
+              priority: Priority.high,
+              onlyAlertOnce: true, // 仅第一次通知时提醒
+              showProgress: true, // 显示进度条
+              maxProgress: maxProgress, // 最大进度
+              progress: i); // 当前进度
+      final NotificationDetails notificationDetails =
+          NotificationDetails(android: androidNotificationDetails);
+      // 使用相同的 ID (progressId) 来更新通知
+      await flutterLocalNotificationsPlugin.show(
+          progressId, 
+          '进度通知标题',
+          '进度通知正文',
+          notificationDetails,
+          payload: '项目 X');
+    });
+  }
+}
+
+/// (Android 特定) 请求全屏意图权限
+Future<bool?> requestAndroidFullScreenIntentPermission() async {
+   if (Platform.isAndroid) {
+    return await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestFullScreenIntentPermission();
+   }
+   return null;
+}
+
+/// 安排一个可以使用全屏意图的通知 (Android 特定)
+Future<void> scheduleFullScreenNotification() async {
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+        _notificationIdCounter++, // 此预定通知的唯一ID
+        '全屏预定标题',
+        '全屏预定正文',
+        tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5)), // 5秒后
+        const NotificationDetails(
+            android: AndroidNotificationDetails(
+                'channel_id_fullscreen', '全屏通知渠道',
+                channelDescription: '用于全屏意图的通知渠道',
+                priority: Priority.high,
+                importance: Importance.high,
+                fullScreenIntent: true)), // 启用全屏意图
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle); // 允许在低电耗模式下精确执行
 } 
+

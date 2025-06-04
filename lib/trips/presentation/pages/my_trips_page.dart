@@ -2,11 +2,13 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For HSLColor
 
+import 'package:tulele/core/services/notification_service.dart';
 import 'package:tulele/market/presentation/pages/solution_market_page.dart';
 import 'package:tulele/market/presentation/pages/plan_details_page.dart';
 import 'trip_detail_page.dart';
 
 class MyTripsPage extends StatefulWidget {
+
   const MyTripsPage({super.key});
 
   @override
