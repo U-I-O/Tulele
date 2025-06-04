@@ -288,6 +288,16 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "4.1.1"
+<<<<<<< HEAD
+  http:
+    dependency: "direct main"
+    description:
+      name: http
+      sha256: "5895291c13fa8a3bd82e76d5627f69e0d85ca6a30dcac95c4ea19a5d555879c2"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.13.6"
+=======
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -301,6 +311,7 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.4.0"
+>>>>>>> fba924ea3b2039f4bd615693ce93299a8a80d66b
   http_parser:
     dependency: transitive
     description:
@@ -453,6 +464,16 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.16.0"
+<<<<<<< HEAD
+  nested:
+    dependency: transitive
+    description:
+      name: nested
+      sha256: "03bac4c528c64c95c722ec99280375a6f2fc708eec17c7b3f07253b626cd2a20"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.0.0"
+=======
   mime:
     dependency: transitive
     description:
@@ -461,6 +482,7 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.0.0"
+>>>>>>> fba924ea3b2039f4bd615693ce93299a8a80d66b
   path:
     dependency: transitive
     description:
@@ -565,6 +587,16 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "6.0.2"
+<<<<<<< HEAD
+  provider:
+    dependency: "direct main"
+    description:
+      name: provider
+      sha256: "4abbd070a04e9ddc287673bf5a030c7ca8b685ff70218720abab8b092f53dd84"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "6.1.5"
+=======
   shared_preferences:
     dependency: "direct main"
     description:
@@ -621,6 +653,7 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.4.1"
+>>>>>>> fba924ea3b2039f4bd615693ce93299a8a80d66b
   sky_engine:
     dependency: transitive
     description: flutter

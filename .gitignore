@@ -33,6 +33,7 @@
 !/lib/*
 !/lib/**
 
+# Don't ignore the backend directory and its contents
 !/backend/
 !/backend/*
 !/backend/**
