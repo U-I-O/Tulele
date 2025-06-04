@@ -11,7 +11,7 @@ class ApiService {
 
   // 后端API地址，实际开发中应从环境变量获取
   // Android模拟器访问本机地址是10.0.2.2，而不是localhost
-  static const String baseUrl = 'http://192.168.75.89:5000/api';
+  static const String baseUrl = 'http://192.168.170.89:5000/api';
   
   // 令牌存储键
   static const String _accessTokenKey = 'access_token';

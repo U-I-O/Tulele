@@ -12,6 +12,10 @@ import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
 // 导入 flutter_local_notifications
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+// 导入依赖注入相关
+import 'core/di/service_locator.dart';
+import 'ai/data/di/ai_module.dart';
+
 // 1. 创建 FlutterLocalNotificationsPlugin 实例
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -23,10 +27,10 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
   debugPrint('(Background) notification tapped: ${notificationResponse.payload}');
   if (notificationResponse.actionId == 'ok_action') {
     debugPrint('Background OK action tapped');
-    // 在这里可以处理“好的”按钮在后台被点击的逻辑
+    // 在这里可以处理"好的"按钮在后台被点击的逻辑
   } else if (notificationResponse.actionId == 'cancel_action') {
     debugPrint('Background Cancel action tapped');
-    // 在这里可以处理“取消”按钮在后台被点击的逻辑
+    // 在这里可以处理"取消"按钮在后台被点击的逻辑
     // 例如取消一个后台任务等
   }
 }
@@ -35,6 +39,9 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
 Future<void> main() async {
   // 确保 Flutter 环境已初始化
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化依赖注入
+  await _initDependencies();
 
   // 3. 初始化通知设置
   const AndroidInitializationSettings initializationSettingsAndroid =
@@ -56,7 +63,7 @@ Future<void> main() async {
         actions: <DarwinNotificationAction>[
           DarwinNotificationAction.plain('ok_action', '好的'),
           DarwinNotificationAction.plain('cancel_action', '取消', options: {
-            DarwinNotificationActionOption.destructive, // 将“取消”标记为破坏性操作 (可选)
+            DarwinNotificationActionOption.destructive, // 将"取消"标记为破坏性操作 (可选)
           }),
         ],
         options: <DarwinNotificationCategoryOption>{
@@ -79,10 +86,10 @@ Future<void> main() async {
       debugPrint('Notification tapped: ${notificationResponse.payload}');
       if (notificationResponse.actionId == 'ok_action') {
         debugPrint('OK action tapped');
-        // 在这里处理“好的”按钮被点击的逻辑 (应用在前台或从后台恢复时)
+        // 在这里处理"好的"按钮被点击的逻辑 (应用在前台或从后台恢复时)
       } else if (notificationResponse.actionId == 'cancel_action') {
         debugPrint('Cancel action tapped');
-        // 在这里处理“取消”按钮被点击的逻辑 (应用在前台或从后台恢复时)
+        // 在这里处理"取消"按钮被点击的逻辑 (应用在前台或从后台恢复时)
         // 例如可以尝试取消通知
         await flutterLocalNotificationsPlugin.cancel(notificationResponse.id ?? 0);
       }
@@ -111,6 +118,17 @@ Future<void> main() async {
 
 
   runApp(const MyAppEntry());
+}
+
+/// 初始化依赖注入
+Future<void> _initDependencies() async {
+  // 初始化服务定位器
+  ServiceLocatorSetup.init();
+  
+  // 注意：ServiceLocatorSetup.init()已经注册了AI模块，不需要重复注册
+  // AiModule.register(); // 去掉重复的注册
+  
+  // 可以在这里添加其他模块的依赖注册
 }
 
 class MyAppEntry extends StatelessWidget {

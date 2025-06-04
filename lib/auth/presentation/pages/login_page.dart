@@ -52,9 +52,9 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-        });
+      setState(() {
+        _errorMessage = e.toString();
+      });
       }
     } finally {
       if (mounted) {

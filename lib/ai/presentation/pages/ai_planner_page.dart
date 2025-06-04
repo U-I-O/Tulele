@@ -3,22 +3,17 @@ import 'package:flutter/material.dart';
 // *** 修改点：导入新的 trip_detail_page.dart ***
 import '../../../trips/presentation/pages/trip_detail_page.dart'; // 确保路径正确
 import 'dart:math'; // 用于生成随机ID (如果需要为新行程生成ID)
+import '../../domain/entities/chat_message.dart';
+import '../viewmodels/ai_chat_viewmodel.dart';
+import '../../data/datasources/deepseek_api.dart';
+import '../../data/repositories/ai_chat_repository_impl.dart';
+import '../../domain/repositories/ai_chat_repository.dart';
+import '../../domain/usecases/send_message_usecase.dart';
+import '../../domain/usecases/generate_trip_plan_usecase.dart';
+import '../../domain/usecases/modify_trip_plan_usecase.dart';
+import 'dart:convert';
+import '../../../core/di/service_locator.dart';
 
-
-// ChatMessage 类定义保持不变
-class ChatMessage {
-  final String text;
-  final bool isUserMessage;
-  final bool hasSuggestions;
-  final List<String>? suggestions;
-
-  ChatMessage({
-    required this.text,
-    required this.isUserMessage,
-    this.hasSuggestions = false,
-    this.suggestions,
-  });
-}
 
 class AiPlannerPage extends StatefulWidget {
   const AiPlannerPage({super.key});
@@ -29,137 +24,87 @@ class AiPlannerPage extends StatefulWidget {
 
 class _AiPlannerPageState extends State<AiPlannerPage> {
   final TextEditingController _textController = TextEditingController();
-  final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
+  late AiChatViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _addInitialAiMessage();
+    
+    // 从依赖注入获取ViewModel
+    _viewModel = serviceLocator<AiChatViewModel>();
+    
+    // 监听ViewModel的变化以更新UI
+    _viewModel.addListener(_onViewModelChanged);
   }
 
-  void _addInitialAiMessage() {
-    setState(() {
-      _messages.add(ChatMessage(
-          text: '您好！我是您的AI旅行助手“途乐乐”，想去哪里？可以告诉我您的目的地、预算、兴趣和时间，我会为您规划行程。',
-          isUserMessage: false,
-          hasSuggestions: true,
-          suggestions: ['我想去三亚，5天，亲子游', '帮我规划一个北京周末文化之旅', '推荐欧洲10日游高性价比路线']
-      ));
-    });
+  void _onViewModelChanged() {
+    if (mounted) {
+      setState(() {});
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    _viewModel.removeListener(_onViewModelChanged);
+    super.dispose();
   }
 
   void _handleSubmitted(String text) {
-    _textController.clear();
     if (text.trim().isEmpty) return;
-
-    setState(() {
-      _messages.add(ChatMessage(text: text, isUserMessage: true));
-      _addAiResponse(text);
+    _textController.clear();
+    
+    // 发送消息到ViewModel
+    _viewModel.sendMessage(text).then((_) {
+      _scrollToBottom();
     });
-    _scrollToBottom();
   }
 
-  void _addAiResponse(String userMessage) {
-    String aiTextResponse;
-    bool hasSuggestions = false;
-    List<String>? suggestions;
-    bool showPlanButtons = false;
-
-    // 模拟的行程数据，当AI“生成”方案时会用到
-    Map<String, dynamic> mockTripDataForEditor = {
-      'name': 'AI规划的行程', // 默认名称，可以从对话中提取
-      'destination': '未知', // 可以从对话中提取
-      'tags': <String>[], // 可以从对话中提取
-      'days': [
-        // AI应该填充更具体的每日活动
-        {
-          'dayNumber': 1,
-          'date': DateTime.now(),
-          'title': '${DateTime.now().month}月${DateTime.now().day}日 (AI规划)',
-          'activities': [
-            {'id': 'ai_act1_${Random().nextInt(100)}', 'time': '上午', 'description': 'AI推荐活动1', 'location': 'AI推荐地点1'},
-            {'id': 'ai_act2_${Random().nextInt(100)}', 'time': '下午', 'description': 'AI推荐活动2', 'location': 'AI推荐地点2'},
-          ],
-          'notes': '这是AI为您初步规划的行程，您可以在编辑页面进行调整。'
-        }
-      ]
-    };
-
-    if (userMessage.contains('三亚') && userMessage.contains('亲子')) {
-      aiTextResponse = '好的，为您规划三亚5日亲子度假推荐：\n'
-          ' • 住宿: 三亚海棠湾喜来登度假酒店(亲子主题房)\n'
-          ' • 必玩景点: 亚龙湾沙滩、天涯海角、蜈支洲岛\n'
-          ' • 特色体验: 亲子潜水、沙滩城堡建造、海洋馆\n'
-          ' • 预算分配: 住宿¥7000, 餐饮¥3000, 景点及体验¥4000, 交通¥1000\n\n'
-          '这个方案您觉得怎么样？';
-      hasSuggestions = true;
-      suggestions = ['看起来不错，详细安排一下每天的行程', '修改预算', '换个酒店推荐'];
-      showPlanButtons = true;
-      // 更新模拟数据
-      mockTripDataForEditor['name'] = 'AI规划的三亚亲子游';
-      mockTripDataForEditor['destination'] = '三亚';
-      (mockTripDataForEditor['tags'] as List<String>).addAll(['亲子', '海岛度假']);
-      // 可以更细化mockTripDataForEditor['days']的内容
-      mockTripDataForEditor['days'] = [
-        {
-          'dayNumber': 1, 'date': DateTime.now(), 'title': '抵达与海滩',
-          'activities': [
-            {'id': 'sanya_act1_${Random().nextInt(100)}', 'time': '09:00', 'description': '抵达三亚，前往酒店'},
-            {'id': 'sanya_act2_${Random().nextInt(100)}', 'time': '14:00', 'description': '亚龙湾沙滩'},
-          ], 'notes': '享受阳光沙滩！'
-        },
-        {
-          'dayNumber': 2, 'date': DateTime.now().add(const Duration(days:1)), 'title': '海岛探索',
-          'activities': [
-            {'id': 'sanya_act3_${Random().nextInt(100)}', 'time': '10:00', 'description': '蜈支洲岛一日游'},
-            {'id': 'sanya_act4_${Random().nextInt(100)}', 'time': '18:00', 'description': '品尝当地海鲜'},
-          ], 'notes': '注意防晒和补水。'
-        }
-        // 可以按需添加更多天数
-      ];
-
-
-    } else if (userMessage.contains('详细安排') || userMessage.contains('采用方案')) { // 包含采用方案的逻辑
-      aiTextResponse = '好的，我这就为您生成详细的行程计划，您可以稍后在编辑页面进行调整。';
-
+  void _adoptCurrentPlan() {
+    final tripPlan = _viewModel.adoptCurrentPlan();
+    if (tripPlan != null) {
+      // 创建新的行程ID
       final String newTripId = 'ai_trip_${DateTime.now().millisecondsSinceEpoch}';
-
-      // 模拟用户确认后，准备跳转到行程详情页的编辑模式
-      Future.delayed(const Duration(milliseconds: 500), () { // 短暂延迟模拟AI处理
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (context) => TripDetailPage(
-                tripId: newTripId, // 传递新生成的ID
-                initialMode: TripMode.edit, // 以编辑模式打开
-                newTripInitialData: mockTripDataForEditor, // 传递AI生成的初始数据
-              )
-          ),
-        );
-      });
-
-    } else if (userMessage.toLowerCase().contains('hello') || userMessage.toLowerCase().contains('你好')) {
-      aiTextResponse = '您好！有什么可以帮您规划的吗？';
-      hasSuggestions = true;
-      suggestions = ['我想去云南', '国内游推荐', '出境游有啥好玩的'];
-    } else {
-      aiTextResponse = '正在理解您说的“$userMessage”... 我还在学习中，您可以尝试换一种问法，或者直接告诉我目的地、天数和偏好。';
-      hasSuggestions = true;
-      suggestions = ['我想去三亚，5天，亲子游', '帮我规划一个北京周末文化之旅'];
-    }
-
-    setState(() {
-      _messages.add(ChatMessage(
-        text: aiTextResponse,
-        isUserMessage: false,
-        hasSuggestions: hasSuggestions,
-        suggestions: suggestions,
-      ));
-      if (showPlanButtons) {
-        _messages.add(ChatMessage(text: "_PLAN_BUTTONS_", isUserMessage: false));
+      
+      // 处理日期格式 - 如果日期是字符串格式，转换为DateTime对象
+      Map<String, dynamic> processedPlan = Map.from(tripPlan);
+      if (processedPlan['days'] != null) {
+        List<Map<String, dynamic>> processedDays = [];
+        for (var day in processedPlan['days']) {
+          Map<String, dynamic> processedDay = Map.from(day);
+          // 如果日期是字符串，转换为DateTime
+          if (day['date'] is String) {
+            try {
+              processedDay['date'] = DateTime.parse(day['date']);
+            } catch (e) {
+              // 如果解析失败，使用当前日期加上day number的偏移
+              processedDay['date'] = DateTime.now().add(Duration(days: day['dayNumber'] - 1));
+            }
+          }
+          processedDays.add(processedDay);
+        }
+        processedPlan['days'] = processedDays;
       }
-    });
+      
+      // 导航到详情页，以编辑模式打开
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripDetailPage(
+            tripId: newTripId,
+            initialMode: TripMode.edit,
+            newTripInitialData: processedPlan,
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法创建行程，请重试')),
+      );
+    }
   }
 
   void _scrollToBottom() {
@@ -174,40 +119,315 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
     });
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI智能规划'),
+        centerTitle: true,
+        actions: [
+          // 添加重置按钮
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('重置对话'),
+                  content: const Text('确定要清空当前对话记录吗？'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _viewModel.reset();
+                      },
+                      child: const Text('确定'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            child: _viewModel.messages.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(8.0),
+                    itemCount: _viewModel.messages.length,
+                    itemBuilder: (context, index) {
+                      return _buildMessage(_viewModel.messages[index]);
+                    },
+                  ),
+          ),
+          // 加载状态提示，显示更细粒度的加载信息
+          if (_viewModel.isLoading) 
+            Column(
+              children: [
+                LinearProgressIndicator(
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+                ),
+                if (_viewModel.loadingStatus.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _viewModel.loadingStatus,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          const Divider(height: 1.0),
+          Container(
+            decoration: BoxDecoration(color: Theme.of(context).cardColor),
+            child: _buildTextComposer(),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            '开始与AI助手对话',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '询问旅游目的地、规划行程或寻找旅行灵感',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          _buildQuickSuggestions(),
+        ],
+      ),
+    );
+  }
+  
+  // 添加快速提示按钮
+  Widget _buildQuickSuggestions() {
+    return Column(
+      children: [
+        Text(
+          '试试这些：',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [
+            _buildSuggestionChip('帮我规划北京周末文化之旅', Icons.history_edu),
+            _buildSuggestionChip('三亚5日游，亲子游', Icons.beach_access),
+            _buildSuggestionChip('上海3天购物美食游', Icons.shopping_bag),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildSuggestionChip(String text, IconData icon) {
+    return ActionChip(
+      avatar: Icon(icon, size: 16, color: Theme.of(context).primaryColor),
+      label: Text(text),
+      labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+      backgroundColor: Colors.grey[100],
+      side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+      onPressed: () => _handleSubmitted(text),
+    );
+  }
+
   Widget _buildMessage(ChatMessage message) {
     final align = message.isUserMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final bgColor = message.isUserMessage ? Theme.of(context).primaryColor : Colors.white;
     final textColor = message.isUserMessage ? Colors.white : Theme.of(context).colorScheme.onSurface;
     final radius = message.isUserMessage
         ? const BorderRadius.only(
-      topLeft: Radius.circular(16),
-      bottomLeft: Radius.circular(16),
-      bottomRight: Radius.circular(16),
-    )
+            topLeft: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          )
         : const BorderRadius.only(
-      topRight: Radius.circular(16),
-      bottomLeft: Radius.circular(16),
-      bottomRight: Radius.circular(16),
-    );
-
-    if (message.text == "_PLAN_BUTTONS_") {
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          );
+          
+    // 处理按钮消息类型
+    if (message.type == ChatMessageType.buttons) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.end, // 按钮也靠右，因为是AI回复后的操作
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            TextButton(
-              onPressed: () {
-                _handleSubmitted("采用方案"); // 触发采用方案的逻辑
-              },
+            ElevatedButton(
+              onPressed: _adoptCurrentPlan,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('采用方案'),
             ),
             const SizedBox(width: 8),
             OutlinedButton(
               onPressed: () {
-                _handleSubmitted("我想修改方案");
+                _handleSubmitted("我想修改这个方案");
               },
               child: const Text('修改方案'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // 处理行程建议消息类型
+    if (message.type == ChatMessageType.planSuggestion) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: Colors.grey.shade300, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 行程头部
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.map, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "行程规划",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // 行程内容
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                message.content,
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+            
+            // 建议按钮
+            if (message.suggestions != null && message.suggestions!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: message.suggestions!.map((suggestion) {
+                    return ActionChip(
+                      label: Text(suggestion),
+                      onPressed: () {
+                        _handleSubmitted(suggestion);
+                      },
+                      backgroundColor: Colors.grey[200],
+                      labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16.0),
+                          side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5))),
+                    );
+                  }).toList(),
+                ),
+              ),
+            
+            // 底部操作按钮区域
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: const Text('编辑'),
+                    onPressed: () {
+                      _adoptCurrentPlan();
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: Icon(Icons.check_circle, size: 18, color: Theme.of(context).primaryColor),
+                    label: Text('采用方案', style: TextStyle(color: Theme.of(context).primaryColor)),
+                    onPressed: _adoptCurrentPlan,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -232,9 +452,15 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
               ),
             ],
           ),
-          child: Text(message.text, style: TextStyle(color: textColor, fontSize: 16)),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          child: Text(
+            message.content,
+            style: TextStyle(color: textColor, fontSize: 16),
+          ),
         ),
-        if (message.hasSuggestions && message.suggestions != null && message.suggestions!.isNotEmpty)
+        if (message.suggestions != null && message.suggestions!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 4.0, bottom: 8.0),
             child: Wrap(
@@ -251,8 +477,7 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
                   labelStyle: TextStyle(color: Theme.of(context).primaryColor),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16.0),
-                      side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5))
-                  ),
+                      side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5))),
                 );
               }).toList(),
             ),
@@ -261,43 +486,14 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI智能规划'),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(8.0),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _buildMessage(_messages[index]);
-              },
-            ),
-          ),
-          const Divider(height: 1.0),
-          Container(
-            decoration: BoxDecoration(color: Theme.of(context).cardColor),
-            child: _buildTextComposer(),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTextComposer() {
     return IconTheme(
-      data: IconThemeData(color: Theme.of(context).hintColor), // 使用主题强调色
+      data: IconThemeData(color: Theme.of(context).hintColor),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
         padding: const EdgeInsets.symmetric(horizontal: 8.0),
         decoration: BoxDecoration(
-            color: Colors.white, // 输入框背景白色
+            color: Colors.white,
             borderRadius: BorderRadius.circular(24.0),
             boxShadow: [
               BoxShadow(
@@ -306,8 +502,7 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
-            ]
-        ),
+            ]),
         child: Row(
           children: <Widget>[
             Flexible(
@@ -315,30 +510,32 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
                 controller: _textController,
                 onSubmitted: _handleSubmitted,
                 decoration: const InputDecoration.collapsed(
-                  hintText: '请输入您的需求...',
+                  hintText: '请输入您的旅游问题或需求...',
                   hintStyle: TextStyle(color: Colors.grey),
                 ),
                 style: const TextStyle(fontSize: 16),
                 minLines: 1,
-                maxLines: 5, // 允许多行输入
+                maxLines: 5,
+                enabled: !_viewModel.isLoading, // 加载时禁用输入
               ),
             ),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4.0),
               child: IconButton(
-                  icon: Icon(Icons.send, color: Theme.of(context).primaryColor), // 发送按钮用主题色
-                  onPressed: () => _handleSubmitted(_textController.text)),
+                icon: Icon(
+                  Icons.send,
+                  color: _viewModel.isLoading
+                      ? Colors.grey
+                      : Theme.of(context).primaryColor,
+                ),
+                onPressed: _viewModel.isLoading
+                    ? null
+                    : () => _handleSubmitted(_textController.text),
+              ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 }
