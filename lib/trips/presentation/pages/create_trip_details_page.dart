@@ -33,13 +33,15 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
   final Set<String> _selectedTags = {};
   final TextEditingController _customTagController = TextEditingController();
 
-  // UI相关的颜色和样式变量，在 didChangeDependencies 中初始化
+  // UI相关的颜色和样式变量
   late Color _primaryColor;
   late Color _lightPrimaryColor;
-  late Color _inputFillColor;
+  late Color _inputFillColor;      // 用于输入框背景
+  late Color _pageBackgroundColor; // 页面背景色
   late TextStyle _inputTextStyle;
   late TextStyle _hintTextStyle;
   late InputDecoration _baseInputDecoration;
+  late TextStyle _sectionTitleStyle; // 区块标题样式
 
   final ApiService _apiService = ApiService();
   bool _isSubmitting = false;
@@ -53,36 +55,42 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 避免在每次重建时都重新计算这些颜色，但如果主题会动态改变，则需要保留在这里
-    _primaryColor = Theme.of(context).primaryColor;
+    _primaryColor = Theme.of(context).primaryColor; // 通常是蓝色系
     _lightPrimaryColor = _primaryColor.withOpacity(0.1);
-    _inputFillColor = Colors.grey.shade100.withOpacity(0.7);
-    _inputTextStyle = TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface);
-    _hintTextStyle = TextStyle(fontSize: 16, color: Colors.grey.shade500);
-    
+    _pageBackgroundColor = Colors.grey[100]!; // 页面背景设为浅灰色，与图片风格接近
+    _inputFillColor = Colors.white; // 输入框背景设为白色
+
+    _inputTextStyle = TextStyle(fontSize: 15, color: Colors.grey.shade800); // 输入文字颜色
+    _hintTextStyle = TextStyle(fontSize: 15, color: Colors.grey.shade500); // 提示文字颜色
+    _sectionTitleStyle = TextStyle( // 区块标题样式
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: Colors.grey.shade700,
+    );
+
     _baseInputDecoration = InputDecoration(
       filled: true,
-      fillColor: _inputFillColor,
+      fillColor: _inputFillColor, // 使用新的白色填充
       hintStyle: _hintTextStyle,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
-        borderSide: BorderSide.none, 
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0), // 调整内边距
+      border: OutlineInputBorder( // 默认边框
+        borderRadius: BorderRadius.circular(8.0), // 调整圆角
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1.0), // 浅灰色边框
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
-        borderSide: BorderSide(color: Colors.grey.shade300.withOpacity(0.5)),
+      enabledBorder: OutlineInputBorder( // 可用状态边框
+        borderRadius: BorderRadius.circular(8.0),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1.0),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
+      focusedBorder: OutlineInputBorder( // 聚焦状态边框
+        borderRadius: BorderRadius.circular(8.0),
         borderSide: BorderSide(color: _primaryColor, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
+        borderRadius: BorderRadius.circular(8.0),
         borderSide: BorderSide(color: Theme.of(context).colorScheme.error, width: 1.0),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
+        borderRadius: BorderRadius.circular(8.0),
         borderSide: BorderSide(color: Theme.of(context).colorScheme.error, width: 1.5),
       ),
       prefixIconColor: Colors.grey.shade600,
@@ -90,34 +98,36 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
     );
   }
 
+
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: (isStartDate ? _startDate : _endDate) ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)), // 例如，只能选最近一个月或未来
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
       locale: const Locale('zh'),
-       builder: (BuildContext context, Widget? child) { // 主题定制保持不变
+       builder: (BuildContext context, Widget? child) {
         return Theme(
-          data: ThemeData.light().copyWith( 
+          data: ThemeData.light().copyWith(
             colorScheme: ColorScheme.light(
-              primary: _primaryColor, 
-              onPrimary: Colors.white, 
-              surface: Colors.white, 
-              onSurface: Colors.grey.shade800, 
+              primary: _primaryColor,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.grey.shade800,
             ),
             dialogBackgroundColor: Colors.white,
-            buttonTheme: ButtonThemeData(
+            buttonTheme: ButtonThemeData( // 确保按钮颜色也应用主题色
               textTheme: ButtonTextTheme.primary,
-               colorScheme: ColorScheme.light(primary: _primaryColor)
+              colorScheme: ColorScheme.light(primary: _primaryColor)
             ),
-            datePickerTheme: DatePickerThemeData(
+            datePickerTheme: DatePickerThemeData( // 日期选择器主题化
               headerBackgroundColor: _primaryColor,
               headerForegroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              dayStyle: TextStyle(color: Colors.grey.shade700),
-              weekdayStyle: TextStyle(color: _primaryColor, fontWeight: FontWeight.w500),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              dayStyle: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+              weekdayStyle: TextStyle(color: _primaryColor.withOpacity(0.8), fontWeight: FontWeight.w500, fontSize: 13),
               yearStyle: TextStyle(color: Colors.grey.shade700),
+              // ... 你可以根据需要进一步定制
             )
           ),
           child: child!,
@@ -128,15 +138,13 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
       setState(() {
         if (isStartDate) {
           _startDate = picked;
-          // 如果结束日期早于新的开始日期，或结束日期为空，则将结束日期也设为新的开始日期
           if (_endDate == null || picked.isAfter(_endDate!)) {
             _endDate = picked;
           }
         } else {
           _endDate = picked;
-          // 如果开始日期晚于新的结束日期，则将开始日期也设为新的结束日期
           if (_startDate != null && picked.isBefore(_startDate!)) {
-            _startDate = picked; 
+            _startDate = picked;
           }
         }
       });
@@ -149,8 +157,6 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
       if (!mounted) return;
       setState(() {
         _selectedTags.add(tag);
-        // 可以选择是否将自定义标签也加入到 _allTags 列表中，以便后续选择
-        // _allTags.add(tag); 
       });
       _customTagController.clear();
     } else if (tag.isNotEmpty && (_allTags.contains(tag) || _selectedTags.contains(tag))) {
@@ -351,12 +357,19 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('填写行程信息'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
+        centerTitle: true, // 标题居中
+        backgroundColor: _pageBackgroundColor, // AppBar 背景色
         foregroundColor: Colors.grey.shade800,
-        elevation: 0.5,
+        elevation: 0, // 去掉 AppBar 阴影
+        bottom: PreferredSize( // 添加细线作为分隔
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(
+            color: Colors.grey.shade300,
+            height: 1.0,
+          ),
+        ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: _pageBackgroundColor, // 页面背景色
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Form(
@@ -370,7 +383,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                 style: _inputTextStyle,
                 decoration: _baseInputDecoration.copyWith(
                   hintText: '例如：北京三日游',
-                  prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded, size: 20),
+                  // prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded, size: 20), // 可以移除前缀图标使其更简洁
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) return '请输入行程名称';
@@ -389,7 +402,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       style: _inputTextStyle,
                       decoration: _baseInputDecoration.copyWith(
                         hintText: '出发地',
-                        prefixIcon: const Icon(Icons.flight_takeoff_outlined, size: 20),
+                        prefixIcon: Icon(Icons.flight_takeoff_outlined, size: 20, color: Colors.grey.shade500),
                       ),
                        validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -406,7 +419,7 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       style: _inputTextStyle,
                       decoration: _baseInputDecoration.copyWith(
                         hintText: '目的地',
-                        prefixIcon: const Icon(Icons.flight_land_outlined, size: 20),
+                        prefixIcon: Icon(Icons.flight_land_outlined, size: 20, color: Colors.grey.shade500),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -426,13 +439,13 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                   Expanded(
                     child: InkWell(
                       onTap: () => _selectDate(context, true),
-                      borderRadius: BorderRadius.circular(10.0),
+                      borderRadius: BorderRadius.circular(8.0), // 调整圆角
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0), // 调整内边距
                         decoration: BoxDecoration(
-                          color: _inputFillColor,
-                          borderRadius: BorderRadius.circular(10.0),
-                           border: Border.all(color: Colors.grey.shade300.withOpacity(0.5)),
+                          color: _inputFillColor, // 使用白色背景
+                          borderRadius: BorderRadius.circular(8.0),
+                           border: Border.all(color: Colors.grey.shade300, width: 1.0), // 浅灰色边框
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -441,9 +454,9 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                               _startDate != null
                                   ? "${_startDate!.year}/${_startDate!.month.toString().padLeft(2, '0')}/${_startDate!.day.toString().padLeft(2, '0')}"
                                   : '出发日期',
-                              style: _startDate != null ? _inputTextStyle : _hintTextStyle,
+                              style: _startDate != null ? _inputTextStyle.copyWith(fontWeight: FontWeight.w500) : _hintTextStyle,
                             ),
-                            Icon(Icons.calendar_month_outlined, color: _primaryColor, size: 20),
+                            Icon(Icons.calendar_month_outlined, color: _primaryColor.withOpacity(0.7), size: 20),
                           ],
                         ),
                       ),
@@ -453,13 +466,13 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                   Expanded(
                     child: InkWell(
                       onTap: () => _selectDate(context, false),
-                      borderRadius: BorderRadius.circular(10.0),
+                      borderRadius: BorderRadius.circular(8.0),
                       child: Container(
-                         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+                         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
                          decoration: BoxDecoration(
                           color: _inputFillColor,
-                          borderRadius: BorderRadius.circular(10.0),
-                          border: Border.all(color: Colors.grey.shade300.withOpacity(0.5)),
+                          borderRadius: BorderRadius.circular(8.0),
+                          border: Border.all(color: Colors.grey.shade300, width: 1.0),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -468,9 +481,9 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                               _endDate != null
                                   ? "${_endDate!.year}/${_endDate!.month.toString().padLeft(2, '0')}/${_endDate!.day.toString().padLeft(2, '0')}"
                                   : '结束日期',
-                              style: _endDate != null ? _inputTextStyle : _hintTextStyle,
+                              style: _endDate != null ? _inputTextStyle.copyWith(fontWeight: FontWeight.w500) : _hintTextStyle,
                             ),
-                            Icon(Icons.calendar_month_outlined, color: _primaryColor, size: 20),
+                            Icon(Icons.calendar_month_outlined, color: _primaryColor.withOpacity(0.7), size: 20),
                           ],
                         ),
                       ),
@@ -478,29 +491,24 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                   ),
                 ],
               ),
-              if (_startDate == null || _endDate == null)
+              // 错误提示信息样式微调
+              if (_startDate == null || _endDate == null || (_endDate != null && _startDate != null && _endDate!.isBefore(_startDate!)))
                 Padding(
-                  padding: const EdgeInsets.only(top: 8.0, left: 4.0),
+                  padding: const EdgeInsets.only(top: 6.0, left: 4.0),
                   child: Text(
                     _startDate == null && _endDate == null ? '请选择出发和结束日期' :
-                    _startDate == null ? '请选择出发日期' : '请选择结束日期',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-                  ),
-                ),
-              if (_startDate != null && _endDate != null && _endDate!.isBefore(_startDate!))
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, left: 4.0),
-                  child: Text(
-                    '结束日期不能早于出发日期',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                    _startDate == null ? '请选择出发日期' : 
+                    _endDate == null ? '请选择结束日期' : 
+                    _endDate!.isBefore(_startDate!) ? '结束日期不能早于出发日期' : '',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error.withOpacity(0.8), fontSize: 12),
                   ),
                 ),
               const SizedBox(height: 24.0),
 
               _buildSectionTitle('旅行标签'),
               Wrap(
-                spacing: 8.0,
-                runSpacing: 8.0,
+                spacing: 10.0, // 标签间横向间距
+                runSpacing: 10.0, // 标签间纵向间距
                 children: _allTags.map((tag) {
                   final isSelected = _selectedTags.contains(tag);
                   return ChoiceChip(
@@ -515,26 +523,26 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                         }
                       });
                     },
-                    backgroundColor: Colors.grey.shade200.withOpacity(0.6),
-                    selectedColor: _lightPrimaryColor,
+                    backgroundColor: Colors.grey.shade200, // 未选中背景色
+                    selectedColor: _primaryColor.withOpacity(0.15), // 选中背景色
                     labelStyle: TextStyle(
                       color: isSelected ? _primaryColor : Colors.grey.shade700,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      fontSize: 13
+                      fontSize: 13.5 // 字体大小
                     ),
                     checkmarkColor: _primaryColor,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16.0),
+                      borderRadius: BorderRadius.circular(18.0), // 更圆的角
                       side: BorderSide(
-                        color: isSelected ? _primaryColor.withOpacity(0.5) : Colors.grey.shade300,
+                        color: isSelected ? _primaryColor.withOpacity(0.6) : Colors.grey.shade300,
                         width: 1.0,
                       ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0), // 内边距
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 16.0),
+              const SizedBox(height: 18.0),
               Row(
                 children: [
                   Expanded(
@@ -543,27 +551,27 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                       style: _inputTextStyle,
                       decoration: _baseInputDecoration.copyWith(
                         hintText: '自定义标签...',
-                        prefixIcon: const Icon(Icons.label_outline_rounded, size: 20),
+                        // prefixIcon: const Icon(Icons.label_outline_rounded, size: 20), // 可以移除
                       ),
                       onFieldSubmitted: (_) => _addCustomTag(),
                     ),
                   ),
                   const SizedBox(width: 12.0),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                    icon: const Icon(Icons.add, size: 18), // 简化图标
                     label: const Text('添加'),
                     onPressed: _addCustomTag,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryColor,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15), // 调整按钮大小
                       textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)), // 统一圆角
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 32.0),
+              const SizedBox(height: 36.0), // 增加底部与按钮的间距
 
               Row(
                 children: [
@@ -573,11 +581,11 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                         Navigator.of(context).pop();
                       },
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14.0),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        padding: const EdgeInsets.symmetric(vertical: 15.0), // 调整按钮高度
+                        textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: _primaryColor),
                         side: BorderSide(color: _primaryColor, width: 1.5),
                         foregroundColor: _primaryColor,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25.0)), // 大圆角
                       ),
                       child: const Text('上一步'),
                     ),
@@ -585,17 +593,17 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
                   const SizedBox(width: 16.0),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitForm, // 调用 _submitForm
+                      onPressed: _isSubmitting ? null : _submitForm,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _primaryColor,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14.0),
+                        padding: const EdgeInsets.symmetric(vertical: 15.0),
                         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25.0)),
                         elevation: 2,
                       ),
                       child: _isSubmitting
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0))
+                          ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                           : const Text('下一步 (编辑日程)'),
                     ),
                   ),
@@ -611,14 +619,10 @@ class _CreateTripDetailsPageState extends State<CreateTripDetailsPage> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14.0, top: 10.0), 
+      padding: const EdgeInsets.only(bottom: 12.0, top: 8.0), // 调整间距
       child: Text(
         title,
-        style: TextStyle(
-          fontSize: 17.0, 
-          fontWeight: FontWeight.w600, 
-          color: Theme.of(context).colorScheme.onBackground.withOpacity(0.85), 
-        ),
+        style: _sectionTitleStyle,
       ),
     );
   }

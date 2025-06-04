@@ -272,6 +272,7 @@ class ApiActivityFromUserTrip {
         // coordinates: json["coordinates"] == null ? null : Map<String, double>.from(json["coordinates"]),
         startTime: json["start_time"],
         endTime: json["end_time"],
+        transportation: json["transportation"], 
         durationMinutes: json["duration_minutes"],
         type: json["type"],
         actualCost: (json["actual_cost"] as num?)?.toDouble(),
@@ -292,6 +293,7 @@ class ApiActivityFromUserTrip {
         // coordinates: planActivity.coordinates,
         startTime: planActivity.startTime,
         endTime: planActivity.endTime,
+        transportation: planActivity.transportation,
         durationMinutes: planActivity.durationMinutes,
         type: planActivity.type,
         // actualCost: null, // 用户行程的实际花费初始为空
@@ -311,6 +313,7 @@ class ApiActivityFromUserTrip {
         // "coordinates": coordinates,
         "start_time": startTime,
         "end_time": endTime,
+        "transportation": transportation,
         "duration_minutes": durationMinutes,
         "type": type,
         "actual_cost": actualCost,
@@ -319,6 +322,47 @@ class ApiActivityFromUserTrip {
         "user_status": userStatus,
         "icon": icon,
     };
+
+    // *** 新增 copyWith 方法 ***
+    ApiActivityFromUserTrip copyWith({
+        String? id,
+        String? originalPlanActivityId,
+        String? title,
+        String? description,
+        String? location,
+        String? address,
+        // Map<String, double>? coordinates,
+        String? startTime,
+        String? endTime,
+        String? transportation,
+        int? durationMinutes,
+        String? type,
+        double? actualCost,
+        String? bookingInfo,
+        String? note,
+        String? userStatus,
+        String? icon,
+    }) {
+        return ApiActivityFromUserTrip(
+            id: id ?? this.id,
+            originalPlanActivityId: originalPlanActivityId ?? this.originalPlanActivityId,
+            title: title ?? this.title,
+            description: description ?? this.description,
+            location: location ?? this.location,
+            address: address ?? this.address,
+            // coordinates: coordinates ?? this.coordinates,
+            startTime: startTime ?? this.startTime,
+            endTime: endTime ?? this.endTime,
+            transportation: transportation ?? this.transportation,
+            durationMinutes: durationMinutes ?? this.durationMinutes,
+            type: type ?? this.type,
+            actualCost: actualCost ?? this.actualCost,
+            bookingInfo: bookingInfo ?? this.bookingInfo,
+            note: note ?? this.note,
+            userStatus: userStatus ?? this.userStatus,
+            icon: icon ?? this.icon,
+        );
+    }
 }
 
 // --- ApiMember, ApiMessage, ApiTicket, ApiNote 类定义 ---

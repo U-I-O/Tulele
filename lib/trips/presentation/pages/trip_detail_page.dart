@@ -17,6 +17,8 @@ import '../../../core/enums/trip_enums.dart';
 import '../widgets/activity_card_widget.dart';
 import '../widgets/map_view_widget.dart';
 import '../widgets/ticket_view_widget.dart';
+import 'activity_edit_page.dart';
+import 'trip_plan_edit_page.dart';
 
 
 class TripDetailPage extends StatefulWidget {
@@ -343,78 +345,114 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新日期已添加 (本地)，请记得保存计划')));
   }
 
-  void _addActivityToCurrentDay(int dayIndex) { // 接收 dayIndex
-    if (_userTripData == null || dayIndex < 0 || dayIndex >= _userTripData!.days.length || !mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先选择或确保一个有效的日期存在')));
-      return;
-    }
+  void _addActivityToCurrentDay(int dayIndex) async {
+    if (_userTripData == null || dayIndex < 0 || dayIndex >= _userTripData!.days.length || !mounted) { /* ... */ return; }
     final currentDay = _userTripData!.days[dayIndex];
-    final newActivity = ApiActivityFromUserTrip(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}', 
-      title: '新活动',
-      startTime: '待定',
+
+    final ApiActivityFromUserTrip? newActivity = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ActivityEditPage(
+          dayDate: currentDay.date ?? _userTripData?.startDate // 传递日期
+        ), // 传入 null 表示添加新活动
+      ),
     );
 
-    setState(() {
-      currentDay.activities.add(newActivity);
-      _isDayExpanded[dayIndex] = true; // *** 确保添加活动的天是展开的 ***
-    });
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-       _editActivity(currentDay, newActivity, currentDay.activities.length - 1);
-    });
+    if (newActivity != null && mounted) {
+      setState(() {
+        // 为新活动生成一个临时的前端ID，如果后端不处理的话
+        final activityToAdd = newActivity.id == null 
+                              ? newActivity.copyWith(id: 'temp_${DateTime.now().millisecondsSinceEpoch}') 
+                              : newActivity;
+        currentDay.activities.add(activityToAdd);
+        _isDayExpanded[dayIndex] = true;
+      });
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已在本地添加，请点击顶部“保存计划”以同步。')));
+    }
   }
 
   void _editActivity(ApiDayFromUserTrip day, ApiActivityFromUserTrip activity, int activityIndex) async {
     if (_userTripData == null || !mounted) return;
 
-    // 使用 ApiActivityFromUserTrip 的字段初始化控制器
-    TextEditingController titleCtrl = TextEditingController(text: activity.title);
-    TextEditingController startTimeCtrl = TextEditingController(text: activity.startTime ?? '');
-    TextEditingController endTimeCtrl = TextEditingController(text: activity.endTime ?? '');
-    TextEditingController locationCtrl = TextEditingController(text: activity.location ?? '');
-    TextEditingController noteCtrl = TextEditingController(text: activity.note ?? '');
-    TextEditingController transportCtrl = TextEditingController(text: activity.transportation ?? '');
-
-    final ApiActivityFromUserTrip? updatedActivityData = await showDialog<ApiActivityFromUserTrip>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('编辑活动'),
-          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: startTimeCtrl, decoration: const InputDecoration(labelText: '开始时间 (如 09:00)')),
-            const SizedBox(height: 8),
-            TextField(controller: endTimeCtrl, decoration: const InputDecoration(labelText: '结束时间 (可选)')),
-            const SizedBox(height: 8),
-            TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '活动内容')),
-            const SizedBox(height: 8),
-            TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: '地点 (可选)')),
-            const SizedBox(height: 8),
-            TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: '备注 (可选)')),
-            const SizedBox(height: 8),
-            TextField(controller: transportCtrl, decoration: const InputDecoration(labelText: '交通方式 (可选)')),
-          ],),),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-            ElevatedButton(onPressed: () {
-              Navigator.pop(context, ApiActivityFromUserTrip(
-                id: activity.id, // 保留原有ID (如果是temp_开头，保存时应设为null)
-                title: titleCtrl.text,
-                startTime: startTimeCtrl.text,
-                endTime: endTimeCtrl.text.isNotEmpty ? endTimeCtrl.text : null,
-                location: locationCtrl.text.isNotEmpty ? locationCtrl.text : null,
-                note: noteCtrl.text.isNotEmpty ? noteCtrl.text : null,
-                transportation: transportCtrl.text.isNotEmpty ? transportCtrl.text : null,
-              ));
-            }, child: const Text('本地保存')), // 改为本地保存，后续统一保存整个计划
-          ],
+    final ApiActivityFromUserTrip? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ActivityEditPage(
+          initialActivity: activity, 
+          dayDate: day.date ?? _userTripData?.startDate // 传递日期给时间选择器
+        ),
       ),
     );
 
-    if (updatedActivityData != null && mounted) {
+    if (result != null && mounted) {
       setState(() {
-        day.activities[activityIndex] = updatedActivityData;
+        day.activities[activityIndex] = result; // 用编辑后的活动替换
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请记得点击顶部“保存计划”')));
+      // 提示用户需要保存整个行程
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请点击顶部“保存计划”以同步到服务器。')));
+    }
+  }
+
+  void _navigateToTripPlanEditPage() async {
+    if (_userTripData == null || !mounted) return;
+
+    final dynamic result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => TripPlanEditPage(userTrip: _userTripData!)),
+    );
+
+    if (result == true && mounted) { // If TripPlanEditPage indicates changes were saved
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('计划详情已更新。正在刷新...')));
+      await _loadUserTripDetails(showLoadingIndicator: true); // Reload data to reflect changes
+    } else if (result == "DELETE_PLAN" && mounted) {
+      // This case is handled if _deleteCurrentTripPlan is called from TripPlanEditPage
+      // If deletion is confirmed and popped from TripPlanEditPage, TripDetailPage should react.
+      // Usually, if deleted, TripDetailPage itself should be popped.
+      // For now, _deleteCurrentTripPlan in TripDetailPage handles the pop after successful API call.
+      // If DELETE_PLAN is popped from TripPlanEditPage, it means it was successful there.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程计划已删除。'), backgroundColor: Colors.green,));
+      Navigator.of(context).pop(true); // Pop TripDetailPage as well
+    }
+  }
+
+  // 新增: 删除行程计划的逻辑
+  void _deleteCurrentTripPlan() async {
+      // 确认弹窗已在 TripPlanEditPage 处理，这里直接执行删除
+      if (_userTripData == null || !mounted) return;
+      
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        bool success = await _apiService.deleteUserTrip(_userTripData!.id);
+        if (success && mounted) {
+          messenger.showSnackBar(const SnackBar(content: Text('行程计划已删除'), backgroundColor: Colors.green));
+          Navigator.of(context).pop(true); // 返回上一页，并告知已删除
+        } else if (mounted) {
+          messenger.showSnackBar(const SnackBar(content: Text('删除失败，请重试'), backgroundColor: Colors.red));
+        }
+      } catch (e) {
+        if (mounted) {
+          messenger.showSnackBar(SnackBar(content: Text('删除操作出错: $e'), backgroundColor: Colors.red));
+        }
+      }
+  }
+  
+  // 新增: 删除单个活动的逻辑 (在 _ActivityDaySection 中调用)
+  void _deleteActivity(ApiDayFromUserTrip day, ApiActivityFromUserTrip activity) async {
+    final confirmDelete = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+              title: const Text('删除活动'),
+              content: Text('确定要删除活动 “${activity.title}” 吗？'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除', style: TextStyle(color: Colors.red))),
+              ],
+            ));
+    if (confirmDelete == true && mounted) {
+      setState(() {
+        day.activities.remove(activity);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地删除，请记得保存计划。')));
     }
   }
 
@@ -520,20 +558,17 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
 
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
-    if (_userTripData == null) {
-      return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())); // 加载中
-    }
-
-    // 优先使用用户覆盖的名称，否则使用行程本身的名称
-    // 行程本身的名称可能来自UserTrip.planDetails.name
-    final String? displayName = _userTripData!.userTripNameOverride;
-    final String? coverImageUrl = _userTripData!.coverImage; // UserTrip 直接有 coverImage
+    if (_userTripData == null) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+    final String? displayName = _userTripData!.displayName;
+    final String? coverImageUrl = _userTripData!.coverImage ?? _userTripData!.planDetails?.coverImage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: _currentMode == TripMode.edit ? _editTripNameAndCoverDialog : null, // _editTripNameAndCoverDialog 是修改后的方法
+          onTap: (_currentMode == TripMode.edit || _currentMode == TripMode.view)
+              ? _navigateToTripPlanEditPage // Navigate to full edit page in both modes
+              : null,
           child: Stack(
             alignment: Alignment.bottomLeft,
             children: [
@@ -597,6 +632,33 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         if (_currentMode == TripMode.view) _buildViewModeActionButtonsStyled(),
         if (_currentMode == TripMode.edit) _buildEditModeActionButtonsStyled(),
         if (_currentMode == TripMode.travel) _buildTravelModeHeaderInfoStyled(),
+        // 新增：显示成员头像
+        if (_userTripData!.members.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0), // 调整垂直间距
+            child: SizedBox(
+              height: 40, // 调整高度以适应头像大小
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _userTripData!.members.length,
+                itemBuilder: (context, index) {
+                  final member = _userTripData!.members[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6.0, top:4, bottom:4),
+                    child: CircleAvatar(
+                      radius: 18, // 调整头像大小
+                      backgroundImage: member.avatarUrl != null && member.avatarUrl!.isNotEmpty
+                          ? NetworkImage(member.avatarUrl!)
+                          : null,
+                      child: member.avatarUrl == null || member.avatarUrl!.isEmpty
+                          ? Text(member.name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 14))
+                          : null,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -900,48 +962,52 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   }
 
   Widget _buildItineraryView() {
-      if (_userTripData == null || _userTripData!.days.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Text(
-              _currentMode == TripMode.edit ? '请在上方日期栏点击“添加日期”以开始规划您的行程。' : '此行程当前没有日期安排。',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
+    if (_userTripData == null || _userTripData!.days.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            _currentMode == TripMode.edit ? '请在上方日期栏点击“添加日期”以开始规划您的行程。' : '此行程当前没有日期安排。',
+            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            textAlign: TextAlign.center,
           ),
-        );
-      }
-
-      return ListView.builder(
-        controller: _itineraryScrollController,
-        padding: const EdgeInsets.all(16.0),
-        itemCount: _userTripData!.days.length,
-        itemBuilder: (context, dayIndex) {
-          final dayData = _userTripData!.days[dayIndex];
-          return _ActivityDaySection( // *** 使用新的私有Widget ***
-            key: _daySectionKeys.isNotEmpty && dayIndex < _daySectionKeys.length ? _daySectionKeys[dayIndex] : GlobalKey(), // GlobalKey 赋值
-            dayData: dayData,
-            dayIndex: dayIndex, 
-            mode: _currentMode,
-            isExpanded: _isDayExpanded[dayIndex] ?? true,
-            onExpansionChanged: (expanded) {
-              setState(() {
-                _isDayExpanded[dayIndex] = expanded;
-              });
-            },
-            onEditActivity: (activity, activityIndex) {
-              _editActivity(dayData, activity, activityIndex);
-            },
-            onAddActivity: () { 
-              _addActivityToCurrentDay(dayIndex);
-            },
-            activityUiStatusMap: _activityUiStatus, // 传递UI状态Map
-            onActivityStatusChange: _handleActivityStatusChange, // 传递状态变更回调
-          );
-        },
+        ),
       );
     }
+
+    return ListView.builder(
+      controller: _itineraryScrollController,
+      padding: const EdgeInsets.all(16.0),
+      itemCount: _userTripData!.days.length,
+      itemBuilder: (context, dayIndex) {
+        final dayData = _userTripData!.days[dayIndex];
+        return _ActivityDaySection(
+          key: _daySectionKeys.isNotEmpty && dayIndex < _daySectionKeys.length ? _daySectionKeys[dayIndex] : GlobalKey(),
+          dayData: dayData,
+          dayIndex: dayIndex, 
+          mode: _currentMode,
+          isExpanded: _isDayExpanded[dayIndex] ?? true,
+          onExpansionChanged: (expanded) {
+            setState(() {
+              _isDayExpanded[dayIndex] = expanded;
+            });
+          },
+          onEditActivity: (activity, activityIndex) {
+            _editActivity(dayData, activity, activityIndex);
+          },
+          onAddActivity: () { 
+            _addActivityToCurrentDay(dayIndex);
+          },
+          activityUiStatusMap: _activityUiStatus,
+          onActivityStatusChange: _handleActivityStatusChange,
+          // *** 新增传递 onDeleteActivity 参数 ***
+          onDeleteActivity: (activityToDelete) { 
+            _deleteActivity(dayData, activityToDelete);
+          },
+        );
+      },
+    );
+  }
 
 
   Widget _buildBottomViewSwitcherBarSliver() {
@@ -1161,6 +1227,22 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                         elevation: 0,
                         automaticallyImplyLeading: true,
                         iconTheme: IconThemeData(color: Colors.grey[700]),
+                        actions: [ 
+                          // New button to navigate to TripPlanEditPage
+                          if (_currentMode == TripMode.view || _currentMode == TripMode.edit) // Show in view and edit modes
+                            IconButton(
+                              icon: Icon(Icons.settings_outlined, color: Colors.grey[700]),
+                              tooltip: '编辑计划详情', // More descriptive tooltip
+                              onPressed: _navigateToTripPlanEditPage,
+                            ),
+                          // 新增删除按钮
+                          if (_currentMode == TripMode.view) // 通常在浏览模式下提供删除
+                            IconButton(
+                              icon: Icon(Icons.delete_outline, color: Colors.grey[700]),
+                              tooltip: '删除行程',
+                              onPressed: _deleteCurrentTripPlan,
+                            ),
+                        ],
                         flexibleSpace: FlexibleSpaceBar(
                           collapseMode: CollapseMode.pin,
                           background: _buildCoverAndTitleSectionWidget(context),
@@ -1196,18 +1278,20 @@ class _ActivityDaySection extends StatelessWidget {
   final VoidCallback onAddActivity; 
   final Map<String, ActivityStatus> activityUiStatusMap; // 新增: 接收整个状态Map
   final Function(String activityId, ActivityStatus newStatus) onActivityStatusChange; // 新增: 状态变更回调
+  final Function(ApiActivityFromUserTrip activity) onDeleteActivity;
 
   const _ActivityDaySection({
     super.key, 
     required this.dayData,
+    required this.onDeleteActivity,
     required this.dayIndex, 
     required this.mode,
     required this.isExpanded,
     required this.onExpansionChanged,
     required this.onEditActivity,
     required this.onAddActivity,
-    required this.activityUiStatusMap, // 新增
-    required this.onActivityStatusChange, // 新增
+    required this.activityUiStatusMap,
+    required this.onActivityStatusChange,
   });
 
   @override
@@ -1260,21 +1344,32 @@ class _ActivityDaySection extends StatelessWidget {
     return Column( 
       children: [
         for (int i = 0; i < activities.length; i++) ...[
-          // *** 使用公开的 ActivityDisplayCard ***
-          ActivityDisplayCard(
-            activity: activities[i],
-            mode: mode,
-            onEdit: () => onEditActivity(activities[i], i),
-            uiStatus: activities[i].id != null ? activityUiStatusMap[activities[i].id!] : null, // 获取特定活动的状态
-            onStatusChange: mode == TripMode.travel 
-                            ? (newStatus) {
-                                if (activities[i].id != null) {
-                                  onActivityStatusChange(activities[i].id!, newStatus);
-                                }} 
-                            : null,
+          Row( // 将卡片和删除按钮包裹在Row中 (仅编辑模式)
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ActivityDisplayCard(
+                  activity: activities[i],
+                  mode: mode,
+                  onEdit: () => onEditActivity(activities[i], i),
+                  uiStatus: activities[i].id != null ? activityUiStatusMap[activities[i].id!] : null,
+                  onStatusChange: mode == TripMode.travel ? (newStatus) { /* ... */ } : null,
+                ),
+              ),
+              if (mode == TripMode.edit)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16.0, left:0), // 调整与卡片对齐
+                  child: IconButton(
+                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 22),
+                    onPressed: () => onDeleteActivity(activities[i]),
+                    tooltip: '删除此活动',
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
+                ),
+            ],
           ),
-          if (i < activities.length - 1) // 如果不是最后一个活动，则添加连接器
-            // *** 使用公开的 TransportConnector ***
+          if (i < activities.length - 1)
             TransportConnector(
               transportationMode: activities[i+1].transportation, 
               durationMinutes: activities[i+1].durationMinutes, 
