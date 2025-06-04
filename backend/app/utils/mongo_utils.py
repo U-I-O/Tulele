@@ -53,5 +53,11 @@ def init_mongo_indexes(mongo):
     # 用于方案市场查询 UserTrip (如果 UserTrip 也有评分等属性)
     # create_mongo_index(mongo, UserTrip.COLLECTION, [('rating', -1), ('publish_status', 1)])
     # create_mongo_index(mongo, UserTrip.COLLECTION, [('price_display', 1), ('publish_status', 1)])
+    
+    # 验证码集合索引
+    create_mongo_index(mongo, 'verification_codes', [('email', 1), ('purpose', 1)])
+    create_mongo_index(mongo, 'verification_codes', [('code', 1)])
+    create_mongo_index(mongo, 'verification_codes', [('expires_at', 1)])
+    create_mongo_index(mongo, 'verification_codes', [('used', 1)])
         
     print("MongoDB索引初始化完成。")

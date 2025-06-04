@@ -6,7 +6,6 @@ from ...utils.type_parsers import parse_mongo_doc # 从 type_parsers 导入
 
 class TripPlan:
     """旅行规划模型
-    
     用于描述一个可被复用的旅行方案模板或核心计划内容。
     """
     

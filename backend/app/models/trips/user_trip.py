@@ -71,18 +71,32 @@ class UserTrip:
         如果 populate_plan 为 True，则尝试聚合关联的 TripPlan 数据。
         """
         try:
-            user_trip_doc = mongo.db[UserTrip.COLLECTION].find_one({'_id': ObjectId(trip_id)})
-            if user_trip_doc and populate_plan and 'plan_id' in user_trip_doc:
-                from .trip_plan import TripPlan # 局部导入避免循环
-                plan_doc = mongo.db[TripPlan.COLLECTION].find_one({'_id': user_trip_doc['plan_id']})
-                if plan_doc:
-                    # 将 TripPlan 的字段（除_id外）合并到 UserTrip 文档中返回
-                    # 注意：这是一种反规范化，在读取时进行。另一种方式是前端分别请求。
-                    plan_details = {k: v for k, v in plan_doc.items() if k != '_id'}
-                    user_trip_doc['plan_details'] = plan_details 
-            return user_trip_doc
+            object_id = ObjectId(trip_id)
         except Exception:
             return None
+
+        if populate_plan:
+            pipeline = [
+                {'$match': {'_id': object_id}},
+                {
+                    '$lookup': {
+                        'from': 'tripPlans', # TripPlan 集合的名称
+                        'localField': 'plan_id',
+                        'foreignField': '_id',
+                        'as': 'plan_details_array'
+                    }
+                },
+                {
+                    '$addFields': {
+                        'plan_details': {'$arrayElemAt': ['$plan_details_array', 0]}
+                    }
+                },
+                {'$project': {'plan_details_array': 0}}
+            ]
+            result = list(mongo.db[UserTrip.COLLECTION].aggregate(pipeline))
+            return result[0] if result else None
+        else:
+            return mongo.db[UserTrip.COLLECTION].find_one({'_id': object_id})
             
     @staticmethod
     def get_user_trips_by_user(mongo, user_id, limit=20, skip=0, populate_plan=False):

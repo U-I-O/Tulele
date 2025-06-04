@@ -4,9 +4,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
+import 'api_service.dart';
 
 class UserService {
-  static const String _usersKey = 'users_data';
   static const String _currentUserKey = 'current_user';
   
   static final UserService _instance = UserService._internal();
@@ -15,6 +15,9 @@ class UserService {
   factory UserService() => _instance;
   
   UserService._internal();
+  
+  // API服务
+  final _apiService = ApiService();
   
   // 用户状态控制器
   final _userController = StreamController<User?>.broadcast();
@@ -38,6 +41,27 @@ class UserService {
       try {
         _currentUser = User.fromJson(jsonDecode(currentUserJson));
         _userController.add(_currentUser);
+        
+        // 尝试验证用户令牌是否有效
+        try {
+          final userData = await _apiService.getCurrentUser();
+          _updateCurrentUser(User.fromBackend(userData['user']));
+        } catch (e) {
+          // 令牌可能已过期，尝试刷新
+          final refreshed = await _apiService.refreshToken();
+          if (refreshed) {
+            try {
+              final userData = await _apiService.getCurrentUser();
+              _updateCurrentUser(User.fromBackend(userData['user']));
+            } catch (e) {
+              // 刷新失败，清除本地用户
+              await logout();
+            }
+          } else {
+            // 刷新令牌失败，清除本地用户
+            await logout();
+          }
+        }
       } catch (e) {
         debugPrint('Failed to parse current user: $e');
       }
@@ -46,32 +70,34 @@ class UserService {
     _initialized = true;
   }
   
+  // 更新当前用户
+  void _updateCurrentUser(User user) async {
+    _currentUser = user;
+    _userController.add(_currentUser);
+    
+    // 保存到本地存储
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_currentUserKey, jsonEncode(user.toJson()));
+  }
+  
   // 注册新用户
   Future<User> register({
     required String email,
     required String username,
     required String password,
   }) async {
-    // 检查邮箱是否已被注册
-    final existingUser = await getUserByEmail(email);
-    if (existingUser != null) {
-      throw Exception('该邮箱已被注册');
-    }
-    
-    // 创建新用户
-    final newUser = User(
-      id: _generateUuid(),
-      email: email,
+    // 调用API服务注册用户
+    final result = await _apiService.register(
       username: username,
+      email: email,
+      password: password,
     );
     
-    // 存储用户信息和密码
-    await _saveUser(newUser, password);
+    // 转换并保存用户信息
+    final user = User.fromBackend(result['user']);
+    _updateCurrentUser(user);
     
-    // 自动登录
-    await login(email: email, password: password);
-    
-    return newUser;
+    return user;
   }
   
   // 用户登录
@@ -79,31 +105,24 @@ class UserService {
     required String email,
     required String password,
   }) async {
-    // 获取用户
-    final user = await getUserByEmail(email);
-    if (user == null) {
-      throw Exception('邮箱或密码不正确');
-    }
+    // 调用API服务登录
+    final result = await _apiService.login(
+      email: email,
+      password: password,
+    );
     
-    // 验证密码
-    final isPasswordValid = await _verifyPassword(email, password);
-    if (!isPasswordValid) {
-      throw Exception('邮箱或密码不正确');
-    }
-    
-    // 设置当前用户
-    _currentUser = user;
-    _userController.add(_currentUser);
-    
-    // 保存当前用户到本地存储
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_currentUserKey, jsonEncode(user.toJson()));
+    // 转换并保存用户信息
+    final user = User.fromBackend(result['user']);
+    _updateCurrentUser(user);
     
     return user;
   }
   
   // 退出登录
   Future<void> logout() async {
+    // 调用API服务登出
+    await _apiService.logout();
+    
     _currentUser = null;
     _userController.add(null);
     
@@ -111,48 +130,16 @@ class UserService {
     await prefs.remove(_currentUserKey);
   }
   
-  // 根据邮箱获取用户
-  Future<User?> getUserByEmail(String email) async {
-    final users = await _loadUsers();
-    
-    for (final userData in users.entries) {
-      final user = User.fromJson(jsonDecode(userData.value['user']));
-      if (user.email.toLowerCase() == email.toLowerCase()) {
-        return user;
-      }
-    }
-    
-    return null;
-  }
-  
   // 更新用户信息
   Future<User> updateUser(User updatedUser) async {
-    if (_currentUser == null) {
-      throw Exception('用户未登录');
-    }
+    // 调用API服务更新用户资料
+    final result = await _apiService.updateProfile(updatedUser.toBackendJson());
     
-    final users = await _loadUsers();
-    final userEntry = users[updatedUser.id];
+    // 转换并保存用户信息
+    final user = User.fromBackend(result['user']);
+    _updateCurrentUser(user);
     
-    if (userEntry == null) {
-      throw Exception('用户不存在');
-    }
-    
-    // 保存密码
-    final password = userEntry['password'];
-    
-    // 更新用户信息
-    await _saveUser(updatedUser, password);
-    
-    // 更新当前用户
-    _currentUser = updatedUser;
-    _userController.add(_currentUser);
-    
-    // 更新本地存储中的当前用户
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_currentUserKey, jsonEncode(updatedUser.toJson()));
-    
-    return updatedUser;
+    return user;
   }
   
   // 添加共享行程
@@ -175,77 +162,66 @@ class UserService {
     return await updateUser(updatedUser);
   }
   
-  // 生成随机验证码
-  String generateVerificationCode() {
-    final random = Random();
-    return (1000 + random.nextInt(9000)).toString(); // 4位数验证码
+  // 修改已登录用户密码
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    await _apiService.changePassword(
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+    );
   }
+  
+  // 发送重置密码验证码
+  Future<void> sendPasswordResetCode(String email) async {
+    await _apiService.sendVerificationCode(
+      email: email,
+      purpose: 'reset_password',
+    );
+  }
+  
+  // 验证邮箱验证码
+  Future<bool> verifyEmailCode(String email, String code, String purpose) async {
+    try {
+      await _apiService.verifyEmailCode(
+        email: email,
+        code: code,
+        purpose: purpose,
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  // 重置密码
+  Future<void> resetPassword(String email, String newPassword, String verificationCode) async {
+    await _apiService.resetPassword(
+      email: email,
+      newPassword: newPassword,
+      verificationCode: verificationCode,
+    );
+  }
+  
+  // 以下方法为兼容旧代码而保留，未来会逐步替换为新的API调用
   
   // 验证邮箱是否已注册
   Future<bool> isEmailRegistered(String email) async {
-    final user = await getUserByEmail(email);
-    return user != null;
-  }
-  
-  // 修改密码
-  Future<void> changePassword(String email, String newPassword) async {
-    final user = await getUserByEmail(email);
-    if (user == null) {
-      throw Exception('用户不存在');
-    }
-    
-    await _saveUser(user, newPassword);
-  }
-  
-  // 加载所有用户
-  Future<Map<String, dynamic>> _loadUsers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final usersJson = prefs.getString(_usersKey);
-    
-    if (usersJson == null) {
-      return {};
-    }
-    
     try {
-      return Map<String, dynamic>.from(jsonDecode(usersJson));
+      // 使用API尝试检查邮箱是否存在
+      // 这里可能需要后端提供一个专门的API端点
+      // 临时实现，假设API还未实现此功能
+      await Future.delayed(const Duration(milliseconds: 300));
+      return false; // 默认假设邮箱未注册，避免阻断用户体验
     } catch (e) {
-      debugPrint('Failed to parse users data: $e');
-      return {};
+      debugPrint('检查邮箱是否注册时出错: $e');
+      return false;
     }
   }
   
-  // 保存用户信息和密码
-  Future<void> _saveUser(User user, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    final users = await _loadUsers();
-    
-    users[user.id] = {
-      'user': jsonEncode(user.toJson()),
-      'password': password, // 实际项目中应该进行加密处理
-    };
-    
-    await prefs.setString(_usersKey, jsonEncode(users));
-  }
-  
-  // 验证密码
-  Future<bool> _verifyPassword(String email, String password) async {
-    final users = await _loadUsers();
-    
-    for (final userData in users.entries) {
-      final user = User.fromJson(jsonDecode(userData.value['user']));
-      if (user.email.toLowerCase() == email.toLowerCase()) {
-        return userData.value['password'] == password;
-      }
-    }
-    
-    return false;
-  }
-  
-  // 生成UUID
-  String _generateUuid() {
+  // 生成随机验证码
+  String generateVerificationCode() {
+    // 生成6位数字验证码
     final random = Random();
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    return List.generate(20, (index) => chars[random.nextInt(chars.length)]).join();
+    return (100000 + random.nextInt(900000)).toString();
   }
   
   // 释放资源

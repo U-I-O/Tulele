@@ -75,14 +75,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     try {
-      // 检查邮箱是否已注册
-      final isRegistered = await _checkEmailRegistered(_emailController.text);
-      if (!isRegistered) {
-        throw Exception('该邮箱尚未注册，请先注册账号');
-      }
-
-      // 模拟生成验证码
-      final verificationCode = UserService().generateVerificationCode();
+      // 调用API发送验证码
+      await UserService().sendPasswordResetCode(_emailController.text);
       
       // 导航到重置密码页面
       if (mounted) {
@@ -90,7 +84,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           MaterialPageRoute(
             builder: (context) => ResetPasswordPage(
               email: _emailController.text,
-              verificationCode: verificationCode,
+              // 不再传入本地验证码，用户从邮件中获取验证码
             ),
           ),
         );
@@ -209,6 +203,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     prefixIcon: Icons.email_outlined,
                     suffixIcon: _isCheckingEmail ? Icons.sync : null,
                     textInputAction: TextInputAction.done,
+                    onChanged: _handleEmailChanged,
                     onSubmitted: (_) => _sendVerificationCode(),
                     validator: (value) {
                       if (value == null || value.isEmpty) {

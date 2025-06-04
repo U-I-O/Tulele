@@ -8,8 +8,10 @@ import datetime
 from . import api
 from .. import mongo
 from ..models.user import User
+from ..models.verification_code import VerificationCode
 from ..utils.auth_utils import authenticate_user, generate_tokens
 from ..utils.type_parsers import parse_mongo_doc
+from ..utils.email_utils import EmailService
 
 @api.route('/auth/register', methods=['POST'])
 def register():
@@ -203,6 +205,120 @@ def change_password():
         return jsonify({'error': '密码更新失败'}), 400
     
     return jsonify({'message': '密码修改成功'})
+
+
+@api.route('/auth/send-verification-code', methods=['POST'])
+def send_verification_code():
+    """发送验证码"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '无效的数据'}), 400
+    
+    # 验证必填字段
+    required_fields = ['email', 'purpose']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'缺少必填字段: {field}'}), 400
+    
+    email = data['email']
+    purpose = data['purpose']
+    
+    # 检查用途是否有效
+    valid_purposes = [VerificationCode.PURPOSE_RESET_PASSWORD, VerificationCode.PURPOSE_VERIFY_EMAIL]
+    if purpose not in valid_purposes:
+        return jsonify({'error': '无效的验证码用途'}), 400
+    
+    # 如果是密码重置，检查用户是否存在
+    if purpose == VerificationCode.PURPOSE_RESET_PASSWORD:
+        user = User.get_user_by_email(mongo, email)
+        if not user:
+            # 为了安全，我们不告诉客户端用户不存在
+            # 而是假装已发送验证码
+            return jsonify({'message': '验证码已发送到您的邮箱'}), 200
+    
+    # 生成验证码
+    code = VerificationCode.create_code(mongo, email, purpose)
+    
+    # 发送验证码邮件
+    EmailService.send_verification_code(email, code, purpose)
+    
+    return jsonify({'message': '验证码已发送到您的邮箱'})
+
+
+@api.route('/auth/verify-code', methods=['POST'])
+def verify_code():
+    """验证验证码"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '无效的数据'}), 400
+    
+    # 验证必填字段
+    required_fields = ['email', 'code', 'purpose']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'缺少必填字段: {field}'}), 400
+    
+    email = data['email']
+    code = data['code']
+    purpose = data['purpose']
+    
+    # 验证验证码
+    is_valid = VerificationCode.verify_code(mongo, email, code, purpose)
+    if not is_valid:
+        return jsonify({'error': '验证码无效或已过期'}), 400
+    
+    return jsonify({'message': '验证码验证成功'})
+
+
+@api.route('/auth/reset-password', methods=['POST'])
+def reset_password():
+    """重置密码"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '无效的数据'}), 400
+    
+    # 验证必填字段
+    required_fields = ['email', 'verification_code', 'new_password']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'缺少必填字段: {field}'}), 400
+    
+    email = data['email']
+    verification_code = data['verification_code']
+    new_password = data['new_password']
+    
+    # 检查用户是否存在
+    user = User.get_user_by_email(mongo, email)
+    if not user:
+        return jsonify({'error': '邮箱不存在'}), 400
+    
+    # 查找验证码记录（无论是否已使用）
+    verification = mongo.db.verification_codes.find_one({
+        'email': email,
+        'code': verification_code,
+        'purpose': VerificationCode.PURPOSE_RESET_PASSWORD,
+        'expires_at': {'$gt': datetime.datetime.now()}
+    })
+    
+    # 如果验证码未找到或已过期，返回错误
+    if not verification:
+        return jsonify({'error': '验证码无效或已过期'}), 400
+    
+    # 更新密码
+    updated_user = {
+        'password_hash': User.generate_password_hash(new_password),
+        'updated_at': datetime.datetime.now()
+    }
+    
+    result = mongo.db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': updated_user}
+    )
+    
+    if result.modified_count == 0:
+        return jsonify({'error': '密码重置失败'}), 400
+    
+    return jsonify({'message': '密码重置成功'})
 
 
 @api.route('/auth/logout', methods=['POST'])

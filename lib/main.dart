@@ -18,7 +18,12 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 //通知服务
 import 'package:tulele/core/services/notification_service.dart' as notification_service;
 
+// 导入依赖注入相关
+import 'core/di/service_locator.dart';
+import 'ai/data/di/ai_module.dart';
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 
 // 全局变量，用于存储应用启动时可能存在的通知响应
 NotificationResponse? initialNotificationResponseFromLaunch;
@@ -26,11 +31,25 @@ NotificationResponse? initialNotificationResponseFromLaunch;
 Future<void> main() async {
   // 确保 Flutter 环境已初始化
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化依赖注入
+  await _initDependencies();
 
   // 调用 notification_service 中的初始化函数，并获取可能的初始通知响应
   initialNotificationResponseFromLaunch = await notification_service.initializeNotificationService();
 
   runApp(MyAppEntry(initialNotificationResponse: initialNotificationResponseFromLaunch));
+}
+
+/// 初始化依赖注入
+Future<void> _initDependencies() async {
+  // 初始化服务定位器
+  ServiceLocatorSetup.init();
+  
+  // 注意：ServiceLocatorSetup.init()已经注册了AI模块，不需要重复注册
+  // AiModule.register(); // 去掉重复的注册
+  
+  // 可以在这里添加其他模块的依赖注册
 }
 
 class MyAppEntry extends StatelessWidget {

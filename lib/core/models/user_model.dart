@@ -19,7 +19,7 @@ class User {
     this.sharedTripIds = sharedTripIds ?? [],
     this.createdAt = createdAt ?? DateTime.now();
   
-  // 从JSON创建用户对象
+  // 从JSON创建用户对象 (本地存储格式)
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id'],
@@ -31,7 +31,25 @@ class User {
     );
   }
   
-  // 转换为JSON
+  // 从后端API返回的用户数据创建用户对象
+  factory User.fromBackend(Map<String, dynamic> json) {
+    return User(
+      // 后端返回的MongoDB _id字段需要转换为前端的id
+      id: json['_id'] ?? json['id'],
+      email: json['email'],
+      username: json['username'],
+      avatarUrl: json['avatar_url'],
+      // 可能需要根据后端字段结构调整
+      sharedTripIds: json['shared_trip_ids'] != null 
+          ? List<String>.from(json['shared_trip_ids'])
+          : [],
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+    );
+  }
+  
+  // 转换为JSON (本地存储格式)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -40,6 +58,16 @@ class User {
       'avatarUrl': avatarUrl,
       'sharedTripIds': sharedTripIds,
       'createdAt': createdAt.toIso8601String(),
+    };
+  }
+  
+  // 转换为发送给后端API的JSON格式
+  Map<String, dynamic> toBackendJson() {
+    return {
+      // 通常不需要发送ID，后端会根据认证令牌识别用户
+      'username': username,
+      'avatar_url': avatarUrl,
+      // 其他需要更新的字段根据API需求添加
     };
   }
   

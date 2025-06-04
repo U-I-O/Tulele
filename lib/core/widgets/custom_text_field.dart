@@ -14,6 +14,7 @@ class CustomTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final TextInputAction textInputAction;
   final Function(String)? onSubmitted;
+  final Function(String)? onChanged;
 
   const CustomTextField({
     Key? key,
@@ -30,6 +31,7 @@ class CustomTextField extends StatelessWidget {
     this.focusNode,
     this.textInputAction = TextInputAction.next,
     this.onSubmitted,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -59,6 +61,7 @@ class CustomTextField extends StatelessWidget {
           focusNode: focusNode,
           textInputAction: textInputAction,
           onFieldSubmitted: onSubmitted,
+          onChanged: onChanged,
           style: TextStyle(
             color: theme.colorScheme.onBackground,
             fontSize: 16,
