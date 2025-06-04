@@ -6,9 +6,9 @@ import '../models/api_trip_plan_model.dart';
 import '../models/api_user_trip_model.dart'; // 确保 ApiTicket 等嵌套模型也在此或其依赖中定义
 
 class ApiService {
-  final String _baseUrl = "http://127.0.0.1:5000/api"; // 开发时用
+  // final String _baseUrl = "http://127.0.0.1:5000/api"; // 开发时用
   // final String _baseUrl = "http://localhost:5000/api"; // 或者你的实际部署地址
-  // final String _baseUrl = "http://47.110.62.185:5000/api"; // 生产环境
+  final String _baseUrl = "http://192.168.170.89:5000/api"; // 生产环境
 
   Future<Map<String, String>> _getHeaders() async {
     String? token = await AuthUtils.getAccessToken();
@@ -414,4 +414,344 @@ class ApiService {
     }
   }
    // TODO: Add methods for notes, feeds, etc., as needed.
+  
+  // --- User Authentication Endpoints ---
+
+  /// 获取当前登录用户信息
+  Future<Map<String, dynamic>> getCurrentUser() async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/users/me'), headers: headers);
+      
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        throw Exception('Failed to get current user: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting current user: $e');
+      throw Exception('Error getting current user: $e');
+    }
+  }
+
+  /// 刷新用户令牌
+  Future<bool> refreshToken() async {
+    String? refreshToken = await AuthUtils.getRefreshToken();
+    
+    if (refreshToken == null) {
+      return false;
+    }
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/refresh-token'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'refresh_token': refreshToken}),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        await AuthUtils.saveTokens(
+          accessToken: data['access_token'],
+          refreshToken: data['refresh_token'],
+          userId: data['user_id'],
+        );
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error refreshing token: $e');
+      return false;
+    }
+  }
+
+  /// 注册新用户
+  Future<Map<String, dynamic>> register({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': username,
+          'email': email,
+          'password': password,
+        }),
+      );
+      
+      if (response.statusCode == 201) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        // 保存认证信息
+        await AuthUtils.saveTokens(
+          accessToken: data['access_token'],
+          refreshToken: data['refresh_token'],
+          userId: data['user']['id'],
+        );
+        return data;
+      } else {
+        throw Exception('Failed to register: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error during registration: $e');
+      throw Exception('Error during registration: $e');
+    }
+  }
+
+  /// 用户登录
+  Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'password': password,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        // 保存认证信息
+        await AuthUtils.saveTokens(
+          accessToken: data['access_token'],
+          refreshToken: data['refresh_token'],
+          userId: data['user']['id'],
+        );
+        return data;
+      } else {
+        throw Exception('Failed to login: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error during login: $e');
+      throw Exception('Error during login: $e');
+    }
+  }
+
+  /// 注销登录
+  Future<void> logout() async {
+    final headers = await _getHeaders();
+    
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/auth/logout'),
+        headers: headers,
+      );
+      // 无论后端响应如何，清除本地令牌
+      await AuthUtils.clearTokens();
+    } catch (e) {
+      print('Error during logout: $e');
+      // 即使发生错误也清除本地令牌
+      await AuthUtils.clearTokens();
+    }
+  }
+
+  /// 更新用户资料
+  Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> userData) async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/profile'),
+        headers: headers,
+        body: json.encode(userData),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        throw Exception('Failed to update profile: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error updating profile: $e');
+      throw Exception('Error updating profile: $e');
+    }
+  }
+
+  /// 修改用户密码
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/password'),
+        headers: headers,
+        body: json.encode({
+          'old_password': oldPassword,
+          'new_password': newPassword,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to change password: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error changing password: $e');
+      throw Exception('Error changing password: $e');
+    }
+  }
+
+  /// 发送验证码
+  Future<void> sendVerificationCode({
+    required String email,
+    required String purpose,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/send-verification-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'purpose': purpose,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to send verification code: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error sending verification code: $e');
+      throw Exception('Error sending verification code: $e');
+    }
+  }
+
+  /// 验证邮箱验证码
+  Future<void> verifyEmailCode({
+    required String email,
+    required String code,
+    required String purpose,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/verify-email-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'code': code,
+          'purpose': purpose,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to verify email code: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error verifying email code: $e');
+      throw Exception('Error verifying email code: $e');
+    }
+  }
+
+  /// 重置密码
+  Future<void> resetPassword({
+    required String email,
+    required String newPassword,
+    required String verificationCode,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'new_password': newPassword,
+          'verification_code': verificationCode,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to reset password: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error resetting password: $e');
+      throw Exception('Error resetting password: $e');
+    }
+  }
+
+  // --- AI规划相关API ---
+
+  /// 发送AI聊天消息
+  Future<Map<String, dynamic>> sendAiChatMessage(String message, List<Map<String, dynamic>> history) async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/ai/chat'),
+        headers: headers,
+        body: json.encode({
+          'message': message,
+          'history': history,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        throw Exception('Failed to send AI chat message: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error sending AI chat message: $e');
+      throw Exception('Error sending AI chat message: $e');
+    }
+  }
+
+  /// 生成AI旅游行程规划
+  Future<Map<String, dynamic>> generateAiTripPlan(String prompt, List<Map<String, dynamic>> history) async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/ai/generate-trip'),
+        headers: headers,
+        body: json.encode({
+          'prompt': prompt,
+          'history': history,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        throw Exception('Failed to generate trip plan: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error generating trip plan: $e');
+      throw Exception('Error generating trip plan: $e');
+    }
+  }
+
+  /// 修改AI旅游行程规划
+  Future<Map<String, dynamic>> modifyAiTripPlan(String prompt, Map<String, dynamic> currentPlan, List<Map<String, dynamic>> history) async {
+    final headers = await _getHeaders();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/ai/modify-trip'),
+        headers: headers,
+        body: json.encode({
+          'prompt': prompt,
+          'currentPlan': currentPlan,
+          'history': history,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      } else {
+        throw Exception('Failed to modify trip plan: ${response.statusCode} ${utf8.decode(response.bodyBytes)}');
+      }
+    } catch (e) {
+      print('Error modifying trip plan: $e');
+      throw Exception('Error modifying trip plan: $e');
+    }
+  }
 }
