@@ -57,6 +57,14 @@ dependencies:
   geolocator: ^14.0.1
   geocoding: ^4.0.0
   
+  # 百度地图官方插件
+  # 基础库 (必须)
+  flutter_baidu_mapapi_base: ^3.9.3
+  # 地图模块 (用于显示地图)
+  flutter_baidu_mapapi_map: ^3.9.3
+  # 搜索模块 (用于POI搜索)
+  flutter_baidu_mapapi_search: ^3.9.3
+
 
 dev_dependencies:
   flutter_test:
@@ -73,7 +81,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets\\icon\\icon.png" # 你的图标路径
+  image_path: "assets/icon/icon.png" # 你的图标路径
   adaptive_icon_background: "#FFFFFF" # 可选，Android自适应图标背景色
 
 # For information on the generic Dart part of this file, see the
@@ -89,7 +97,12 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-        - assets/img/    # 确保这行或类似的行存在
+    - assets/icon/icon.png
+    - assets/icon/location.png
+    - assets/icon/icon_mark.png
+    - assets/img/
+    - resources/
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

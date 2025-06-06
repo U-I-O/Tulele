@@ -206,6 +206,30 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_baidu_mapapi_base:
+    dependency: "direct main"
+    description:
+      name: flutter_baidu_mapapi_base
+      sha256: c8a4edcf25ebded630edaed11dccac98e34f17debd321acb1ef589fd104455f9
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.9.3"
+  flutter_baidu_mapapi_map:
+    dependency: "direct main"
+    description:
+      name: flutter_baidu_mapapi_map
+      sha256: "6d78a513d2c83762166bfd1f3fc06c26ba2f11b6f9ee9a1e2a5b69837fbcb93a"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.9.3"
+  flutter_baidu_mapapi_search:
+    dependency: "direct main"
+    description:
+      name: flutter_baidu_mapapi_search
+      sha256: bad954f8f2c40386b61dca54c2b78962bac88f80a461543b32f57b226bf7d83c
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.9.3"
   flutter_dotenv:
     dependency: "direct main"
     description:
@@ -321,10 +345,10 @@ packages:
     dependency: transitive
     description:
       name: geocoding_android
-      sha256: fe7df2e35dc49a5176af634ff9c7b0312d9a2adc94320b936a56241f8028bbbc
+      sha256: ba810da90d6633cbb82bbab630e5b4a3b7d23503263c00ae7f1ef0316dcae5b9
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "4.0.0"
+    version: "4.0.1"
   geocoding_ios:
     dependency: transitive
     description:

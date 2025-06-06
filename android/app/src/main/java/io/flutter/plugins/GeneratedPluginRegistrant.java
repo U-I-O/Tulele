@@ -16,6 +16,21 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
+      flutterEngine.getPlugins().add(new com.baidu.mapapi.base.FlutterBmfbasePlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_baidu_mapapi_base, com.baidu.mapapi.base.FlutterBmfbasePlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new com.baidu.bmfmap.FlutterBmfmapPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_baidu_mapapi_map, com.baidu.bmfmap.FlutterBmfmapPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new com.baidu.mapapi.search.FlutterBmfsearchPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_baidu_mapapi_search, com.baidu.mapapi.search.FlutterBmfsearchPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin flutter_local_notifications, com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin", e);

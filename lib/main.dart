@@ -17,6 +17,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:tulele/core/services/notification_service.dart' as notification_service;
 //测试通知页面
 import 'package:tulele/profile/presentation/pages/notification_test_page.dart';
+import 'package:flutter_baidu_mapapi_base/flutter_baidu_mapapi_base.dart';
 
 // 导入依赖注入相关
 import 'core/di/service_locator.dart';
@@ -32,6 +33,30 @@ Future<void> main() async {
   
   // 初始化依赖注入
   await _initDependencies();
+
+  // ******************** 新增：百度地图SDK初始化 ********************
+  // 1. 设置同意隐私协议 (必须在使用任何百度地图功能前调用)
+  BMFMapSDK.setAgreePrivacy(true);
+
+  // 2. 初始化百度地图SDK
+  // 注意：AK (API Key) 的主要配置位置在原生的 AndroidManifest.xml 和 Info.plist 文件中。
+  BMFMapSDK.setApiKeyAndCoordType(
+    'bXFtUXEAbctYkjW9fA5nAiSWUMQTid4f',
+    BMF_COORD_TYPE.BD09LL // 指定坐标类型，通常使用百度自家的BD09LL
+  );
+  // ******************************************************************
+
+  // ******************** 新增：百度地图SDK初始化 ********************
+  // 1. 设置同意隐私协议 (必须在使用任何百度地图功能前调用)
+  BMFMapSDK.setAgreePrivacy(true);
+
+  // 2. 初始化百度地图SDK
+  // 注意：AK (API Key) 的主要配置位置在原生的 AndroidManifest.xml 和 Info.plist 文件中。
+  BMFMapSDK.setApiKeyAndCoordType(
+    'v6hN8FYWu3doReyzysYeicU2IVQrE5ch',
+    BMF_COORD_TYPE.BD09LL // 指定坐标类型，通常使用百度自家的BD09LL
+  );
+  // ******************************************************************
 
   // 调用 notification_service 中的初始化函数，并获取可能的初始通知响应
   initialNotificationResponseFromLaunch = await notification_service.initializeNotificationService();
@@ -70,7 +95,6 @@ class MyAppEntry extends StatelessWidget {
       home: MainPageNavigator(initialNotificationResponse: initialNotificationResponse), // 传递参数
       debugShowCheckedModeBanner: false,
       routes: {
-
         '/testNotificationPage': (context) => TestNotificationPage(null),
       },
     );

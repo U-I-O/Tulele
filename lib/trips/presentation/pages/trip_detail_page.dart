@@ -363,8 +363,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       context,
       MaterialPageRoute(
         builder: (context) => ActivityEditPage(
-          dayDate: currentDay.date ?? _userTripData?.startDate // 传递日期
-        ), // 传入 null 表示添加新活动
+          dayDate: currentDay.date ?? _userTripData?.startDate,
+          destinationCity: _userTripData?.destination, // *** 新增：传递目的地城市 ***
+        ),
       ),
     );
 
@@ -389,7 +390,8 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       MaterialPageRoute(
         builder: (context) => ActivityEditPage(
           initialActivity: activity, 
-          dayDate: day.date ?? _userTripData?.startDate // 传递日期给时间选择器
+          dayDate: day.date ?? _userTripData?.startDate,
+          destinationCity: _userTripData?.destination, // *** 新增：传递目的地城市 ***
         ),
       ),
     );
@@ -463,6 +465,48 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         day.activities.remove(activity);
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地删除，请记得保存计划。')));
+    }
+  }
+
+  // 新增: 发布行程的逻辑
+  Future<void> _publishTrip() async {
+    if (_userTripData == null || !mounted) return;
+    if (_userTripData!.publishStatus == 'published') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此行程已经发布过了。')));
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在发布行程...')));
+
+    try {
+      // 准备更新的载荷，只包含 publish_status
+      Map<String, dynamic> updatePayload = {
+        'publish_status': 'published',
+        // 如果发布时需要填写“给管理员的提交说明”，可以在这里弹窗获取
+        // 'submission_notes_to_admin': '用户提交发布的行程' 
+      };
+
+      final updatedUserTrip = await _apiService.updateUserTrip(widget.userTripId, updatePayload);
+      
+      if (mounted) {
+        setState(() {
+          _userTripData = updatedUserTrip; // 更新本地数据
+          // _currentMode = TripMode.view; // 发布后通常返回查看模式，如果当前是编辑模式的话
+        });
+        messenger.removeCurrentSnackBar();
+        messenger.showSnackBar(const SnackBar(content: Text('行程发布成功！'), backgroundColor: Colors.green));
+        // 可以在这里考虑是否需要重新加载数据或仅更新UI
+        // await _loadUserTripDetails(showLoadingIndicator: false); 
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.removeCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(
+          content: Text('发布行程失败: ${e.toString().substring(0, min(e.toString().length, 100))}'),
+          backgroundColor: Colors.red,
+        ));
+      }
     }
   }
 
@@ -606,30 +650,45 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         // 新增：显示成员头像
         if (_userTripData!.members.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0), // 调整垂直间距
-            child: SizedBox(
-              height: 40, // 调整高度以适应头像大小
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _userTripData!.members.length,
-                itemBuilder: (context, index) {
-                  final member = _userTripData!.members[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6.0, top:4, bottom:4),
-                    child: CircleAvatar(
-                      radius: 18, // 调整头像大小
-                      backgroundImage: member.avatarUrl != null && member.avatarUrl!.isNotEmpty
-                          ? NetworkImage(member.avatarUrl!)
-                          : null,
-                      child: member.avatarUrl == null || member.avatarUrl!.isEmpty
-                          ? Text(member.name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 14))
-                          : null,
-                    ),
-                  );
-                },
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0),
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                // 现有的成员头像列表
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _userTripData!.members.length,
+                      itemBuilder: (context, index) {
+                      final member = _userTripData!.members[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6.0, top:4, bottom:4),
+                          child: CircleAvatar(
+                            radius: 18, // 调整头像大小
+                            backgroundImage: member.avatarUrl != null && member.avatarUrl!.isNotEmpty
+                                ? NetworkImage(member.avatarUrl!)
+                                : null,
+                            child: member.avatarUrl == null || member.avatarUrl!.isEmpty
+                                ? Text(member.name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 14))
+                                : null,
+                              ),
+                            );
+                    },
+                  ),
+                ),
+                
               ),
-            ),
+              IconButton(
+                  icon: const Icon(Icons.map_outlined, size: 22),
+                  onPressed: () => _navigateToMapPage(),
+                  tooltip: '查看地图',
+                ),
+
+            ],
           ),
+        ),
       ],
     );
   }
@@ -918,32 +977,32 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     if (_userTripData == null) {
       return const Center(child: Text("等待行程数据..."));
     }
-
-    return PageView(
+    return PageView.builder(
       controller: _mainContentPageController,
+      itemCount: 2, // 只有行程和票夹两个视图
       onPageChanged: (index) {
         if (mounted) setState(() { _currentMainViewIndex = index; });
       },
-      children: <Widget>[
-        _buildItineraryView(), // *** 使用新的行程视图方法 ***
-        if (_userTripData!.days.isNotEmpty && _selectedDayIndex != -1 && _selectedDayIndex < _userTripData!.days.length)
-            MapViewWidget(
-                activities: _userTripData!.days[_selectedDayIndex].activities, 
-                mode: _currentMode
-            )
-        else
-            const Center(child: Text("请先选择一个日期或添加活动以查看地图")),
-
-        if (_userTripData!.days.isNotEmpty && _selectedDayIndex != -1 && _selectedDayIndex < _userTripData!.days.length)
-            TicketViewWidget(
-                tickets: _getTicketsForCurrentDay(_userTripData!.days[_selectedDayIndex].date) 
-            )
-        else
-            const Center(child: Text("请先选择一个日期或添加票券以查看票夹")),
-      ],
+      itemBuilder: (context, index) {
+        if (_currentMainViewIndex != index) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        switch (index) {
+          case 0: // 行程视图
+            return _buildItineraryView();
+          case 1: // 票夹视图
+            return _userTripData!.days.isNotEmpty && _selectedDayIndex != -1
+                ? TicketViewWidget(tickets: _getTicketsForCurrentDay(_userTripData!.days[_selectedDayIndex].date))
+                : const Center(child: Text("请先选择一个日期或添加票券以查看票夹"));
+          default:
+            return const SizedBox.shrink();
+        }
+      }
     );
   }
 
+  //日程视图
   Widget _buildItineraryView() {
     if (_userTripData == null || _userTripData!.days.isEmpty) {
       return Center(
@@ -992,6 +1051,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     );
   }
 
+  //修改底部导航栏，只显示行程和票夹
   Widget _buildBottomViewSwitcherBarSliver() {
     return SliverPersistentHeader(
       pinned: true,
@@ -1007,7 +1067,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildBottomViewTab(BottomView.itinerary, Icons.article_outlined, '行程'),
-              _buildBottomViewTab(BottomView.map, Icons.map_outlined, '地图'),
               _buildBottomViewTab(BottomView.tickets, Icons.confirmation_number_outlined, '票夹'),
             ],
           ),
@@ -1182,12 +1241,34 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }
   }
 
+  void _navigateToMapPage() {
+    if (_userTripData == null || _selectedDayIndex == -1 || 
+        _selectedDayIndex >= _userTripData!.days.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择一个日期或添加活动以查看地图'))
+      );
+      return;
+    }    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TripMapPage(
+          userTripData: _userTripData!,
+          selectedDayIndex: _selectedDayIndex,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) { return const Scaffold(body: Center(child: CircularProgressIndicator())); }
     if (_loadingError != null) { return Scaffold(body: Center(child: Text(_loadingError!))); }
     if (_userTripData == null) { return const Scaffold(body: Center(child: Text("无法加载行程数据。"))); }
+
+    // 根据当前状态确定是否显示发布按钮及是否启用
+    bool canPublish = _userTripData != null && 
+                      _userTripData!.publishStatus != 'published' && 
+                      _userTripData!.publishStatus != 'pending_review'; // 假设有待审核状态
 
     return Scaffold(
       body: SafeArea(
@@ -1210,14 +1291,26 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                         automaticallyImplyLeading: true,
                         iconTheme: IconThemeData(color: Colors.grey[700]),
                         actions: [ 
-                          // New button to navigate to TripPlanEditPage
+                          // 发布按钮
+                          if (_currentMode == TripMode.view || _currentMode == TripMode.edit) // 仅在查看或编辑模式下显示
+                            Tooltip(
+                              message: canPublish ? '发布行程' : '行程已发布或待审核',
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.publish_outlined,
+                                  color: canPublish ? Colors.grey[700] : Colors.grey[400], // 禁用时颜色变浅
+                                ),
+                                onPressed: canPublish ? _publishTrip : null, // 如果不能发布，则 onPressed 为 null
+                              ),
+                            ),
+                          // 设置按钮
                           if (_currentMode == TripMode.view || _currentMode == TripMode.edit) // Show in view and edit modes
                             IconButton(
                               icon: Icon(Icons.settings_outlined, color: Colors.grey[700]),
                               tooltip: '编辑计划详情', // More descriptive tooltip
                               onPressed: _navigateToTripPlanEditPage,
                             ),
-                          // 新增删除按钮
+                          // 删除按钮
                           if (_currentMode == TripMode.view) // 通常在浏览模式下提供删除
                             _buildTestNotificationsButton(),
                             IconButton(
@@ -1249,6 +1342,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       ),
     );
   }
+  
   Widget _buildTestNotificationsButton() {
     if (_userTripData == null) return const SizedBox.shrink();
     
@@ -1260,9 +1354,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         
         // 模拟整体通知序列
         _tripNotificationService.simulateDayNotifications();
-        
-        // 或模拟特定某天的详细活动
-        // _tripNotificationService.simulateSpecificDayActivities(0); // 模拟第一天
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('开始模拟旅行通知...')),

@@ -179,7 +179,7 @@ class _MyTripsPageState extends State<MyTripsPage> {
               Image.asset(
                 'assets/icon/icon.png',
                 height: 70, // 根据您的截图调整大小，可能需要调整为 50-60
-                color: Colors.blue.shade700, // 根据您的截图，飞机图标是深蓝色
+                // color: Colors.blue.shade700, // 根据您的截图，飞机图标是深蓝色
                 errorBuilder: (context, error, stackTrace) {
                   // 如果图片加载失败，显示备用飞机图标
                   return Icon(Icons.flight, size: 60, color: Colors.blue.shade600);
