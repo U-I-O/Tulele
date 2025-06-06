@@ -10,20 +10,18 @@ import 'package:tulele/trips/presentation/pages/my_trips_page.dart';
 import 'package:tulele/profile/presentation/pages/profile_page.dart';
 import 'package:tulele/ai/presentation/pages/ai_planner_page.dart';
 import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
+
+//通知服务
+import 'package:tulele/trips/services/trip_notification_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:tulele/core/services/notification_service.dart' as notification_service;
 //测试通知页面
 import 'package:tulele/profile/presentation/pages/notification_test_page.dart';
 
-// flutter_local_notifications 以便使用 NotificationResponse 等类型
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-//通知服务
-import 'package:tulele/core/services/notification_service.dart' as notification_service;
-
 // 导入依赖注入相关
 import 'core/di/service_locator.dart';
-import 'ai/data/di/ai_module.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 
 // 全局变量，用于存储应用启动时可能存在的通知响应
 NotificationResponse? initialNotificationResponseFromLaunch;
@@ -45,11 +43,7 @@ Future<void> main() async {
 Future<void> _initDependencies() async {
   // 初始化服务定位器
   ServiceLocatorSetup.init();
-  
-  // 注意：ServiceLocatorSetup.init()已经注册了AI模块，不需要重复注册
-  // AiModule.register(); // 去掉重复的注册
-  
-  // 可以在这里添加其他模块的依赖注册
+
 }
 
 class MyAppEntry extends StatelessWidget {
@@ -131,53 +125,19 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
 
     // 根据 payload 处理:
     if (response.payload != null && response.payload!.isNotEmpty) {
-      if (response.payload == '项目 Z') {
-        // 确保 context 可用且 mounted
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          builder: (BuildContext context) => AlertDialog(
-            title: Text('通知被点击'),
-            content: Text('负载数据: ${response.payload}\n动作ID: ${response.actionId}'),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text('好的'),
-              ),
-            ],
-          ),
-        );
+      if (response.payload?.startsWith('trip_') == true ||
+          response.payload?.startsWith('activity_') == true) {
+        // 旅行相关通知，交给TripNotificationService处理
+        final tripNotificationService = TripNotificationService();
+        tripNotificationService.handleNotificationResponse(response);
+        return;
       }
-      else if (response.payload == '项目 X') {
-        debugPrint('---------通知输入---------: payload触发: ${response.payload}');
-        if (!mounted) return;
-        // 这是 'showNotificationWithTextAction' 设置的 payload
-        // 我们可以在这里处理用户输入，例如显示一个对话框
-        if (response.input != null && response.input!.isNotEmpty) {
-          debugPrint('通知输入: User input from notification: ${response.input}');
-          showDialog(
-            context: context,
-            builder: (BuildContext context) => AlertDialog(
-              title: Text('收到文本输入'),
-              content: Text('用户输入内容: ${response.input}\n原始Payload: ${response.payload}\n动作ID: ${response.actionId}'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text('好的'),
-                ),
-              ],
-            ),
-          );
-        } else {
+      else if (response.payload == '项目 Z') {
           showDialog(
             context: context,
             builder: (BuildContext context) => AlertDialog(
               title: Text('通知被点击'),
-              content: Text('通知类型：文本输入 (但未检测到用户输入或用户未通过输入动作交互)\nPayload: ${response.payload}\n动作ID: ${response.actionId}'),
+              content: Text('负载数据: ${response.payload}\n动作ID: ${response.actionId}'),
               actions: <Widget>[
                 TextButton(
                   onPressed: () {
@@ -188,45 +148,54 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
               ],
             ),
           );
-        }
+      }
+      else if (response.payload == '项目 X') {
+          debugPrint('---------通知输入---------: payload触发: ${response.payload}');
+          if (!mounted) return;
+          // 这是 'showNotificationWithTextAction' 设置的 payload
+          // 我们可以在这里处理用户输入，例如显示一个对话框
+          if (response.input != null && response.input!.isNotEmpty) {
+            debugPrint('通知输入: User input from notification: ${response.input}');
+            showDialog(
+              context: context,
+              builder: (BuildContext context) => AlertDialog(
+                title: Text('收到文本输入'),
+                content: Text('用户输入内容: ${response.input}\n原始Payload: ${response.payload}\n动作ID: ${response.actionId}'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Text('好的'),
+                  ),
+                ],
+              ),
+            );
+          } 
+          else {
+            showDialog(
+              context: context,
+              builder: (BuildContext context) => AlertDialog(
+                title: Text('通知被点击'),
+                content: Text('通知类型：文本输入 (但未检测到用户输入或用户未通过输入动作交互)\nPayload: ${response.payload}\n动作ID: ${response.actionId}'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Text('好的'),
+                  ),
+                ],
+              ),
+            );
+          }
       }
     }
-
     // 根据 actionId 处理 (可以与 payload 处理逻辑结合或独立处理):
     if (response.actionId == notification_service.urlLaunchActionId) {
       debugPrint("尝试打开链接...");
       // 实际的打开链接逻辑可以在这里添加，例如使用 url_launcher 插件
     } 
-    else if (response.actionId == notification_service.navigationActionId) {
-      debugPrint("尝试导航...");
-      // 实际的导航逻辑可以在这里添加
-      navigatorKey.currentState?.pushNamed('/testNotificationPage', arguments: response);
-      // 或者如果导航比较复杂，可以调用一个专门的导航服务方法
-      if (!mounted) return;
-      showDialog(
-            context: context,
-            builder: (BuildContext context) => AlertDialog(
-              title: Text('导航请求'),
-              content: Text('''请求导航到与通知相关的页面。
-Payload: ${response.payload}
-ActionID: ${response.actionId}'''),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    // Placeholder for actual navigation logic
-                  },
-                  child: Text('去看看'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('取消'),
-                ),
-              ],
-            ),
-          );
-
-    }
     else if (response.actionId == 'text_id_1') { // 这是 showNotificationWithTextAction 中定义的 actionId
       if (response.input != null && response.input!.isNotEmpty) {
         debugPrint('MainPageNavigator: Received input via actionId \'text_id_1\': ${response.input}');

@@ -7,6 +7,11 @@ import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 确保已配置
 import '../../../../main.dart'; // For flutterLocalNotificationsPlugin
 
+//通知服务智慧旅游模式
+import '../../services/trip_notification_service.dart';
+import '../../services/trip_location_service.dart'; // 如果实现了位置服务
+
+
 // 核心服务和模型
 import '../../../core/services/api_service.dart';
 import '../../../core/models/api_user_trip_model.dart';
@@ -19,6 +24,11 @@ import '../widgets/map_view_widget.dart';
 import '../widgets/ticket_view_widget.dart';
 import 'activity_edit_page.dart';
 import 'trip_plan_edit_page.dart';
+
+
+// 服务实例
+final TripNotificationService _tripNotificationService = TripNotificationService();
+final TripLocationService _tripLocationService = TripLocationService(); // 如果实现了位置服务
 
 
 class TripDetailPage extends StatefulWidget {
@@ -518,45 +528,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }).toList();
   }
 
-  // --- 新增：显示行程开始通知的方法 ---
-  Future<void> _showTripStartedNotification() async {
-    if (_userTripData == null) return; // 确保数据已加载
-    const AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-      'trip_status_channel',
-      '行程状态通知',
-      channelDescription: '用于通知行程的开始、进行中和结束状态。',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      icon: '@mipmap/ic_launcher',
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction('ok_action', '好的'),
-        AndroidNotificationAction('cancel_action', '取消'),
-      ],
-    );
-    const DarwinNotificationDetails darwinNotificationDetails =
-        DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      categoryIdentifier: 'trip_started_category',
-    );
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidNotificationDetails,
-      iOS: darwinNotificationDetails,
-    );
-
-    await flutterLocalNotificationsPlugin.show(
-      0, // 通知的唯一 ID
-      '旅行已开始', // 通知标题
-      '您的“${_userTripData!.userTripNameOverride}”行程已正式进入旅行模式！', // 通知内容
-      notificationDetails,
-      payload: 'trip_started_payload_${_userTripData!.id}', // 点击通知时传递的数据
-    );
-  }
-
-
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
     if (_userTripData == null) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
     final String? displayName = _userTripData!.displayName;
@@ -774,9 +745,14 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             try {
               final updatedTrip = await _apiService.updateUserTrip(widget.userTripId, {"travel_status": "traveling"});
               if (!mounted) return;
-              // 如果需要使用 updatedTrip 更新本地 _userTripData，可以在这里操作
-              // _userTripData = updatedTrip; // 或者部分更新
-              await _showTripStartedNotification();
+
+              // 激活旅行通知系统
+              await _tripNotificationService.activateTripMode(widget.userTripId);
+              // 启动位置跟踪
+              if (_currentMode == TripMode.travel) {
+                await _tripLocationService.startLocationTracking();
+              }
+
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('旅行模式已开启！')));
               await _loadUserTripDetails(showLoadingIndicator: false);
             } catch (e) {
@@ -830,6 +806,13 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                 try {
                   final updatedTrip = await _apiService.updateUserTrip(widget.userTripId, {"travel_status": "completed"});
                   if (!mounted) return;
+
+                  // 停用旅行通知系统
+                  await _tripNotificationService.deactivateTripMode();
+                  // 停止位置跟踪
+                  _tripLocationService.stopLocationTracking();
+
+
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('旅行已圆满结束！')));
                   await _loadUserTripDetails(showLoadingIndicator: false);
                 } catch (e) {
@@ -1008,7 +991,6 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       },
     );
   }
-
 
   Widget _buildBottomViewSwitcherBarSliver() {
     return SliverPersistentHeader(
@@ -1237,6 +1219,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                             ),
                           // 新增删除按钮
                           if (_currentMode == TripMode.view) // 通常在浏览模式下提供删除
+                            _buildTestNotificationsButton(),
                             IconButton(
                               icon: Icon(Icons.delete_outline, color: Colors.grey[700]),
                               tooltip: '删除行程',
@@ -1266,7 +1249,29 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       ),
     );
   }
+  Widget _buildTestNotificationsButton() {
+    if (_userTripData == null) return const SizedBox.shrink();
+    
+    return ElevatedButton.icon(
+      icon: const Icon(Icons.notifications_active),
+      label: const Text('模拟今日通知'),
+      onPressed: () {
+        _tripNotificationService.setTripData(_userTripData!);
+        
+        // 模拟整体通知序列
+        _tripNotificationService.simulateDayNotifications();
+        
+        // 或模拟特定某天的详细活动
+        // _tripNotificationService.simulateSpecificDayActivities(0); // 模拟第一天
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('开始模拟旅行通知...')),
+        );
+      },
+    );
+  }
 } 
+
 
 class _ActivityDaySection extends StatelessWidget {
   final ApiDayFromUserTrip dayData;

@@ -3,6 +3,8 @@
 
 # But don't ignore directories
 !*/
+!android\app\src\main       
+!android\app\build.gradle.kts
 
 # Except for these directories which we want to ignore
 /.dart_tool/
@@ -17,7 +19,6 @@
 /途乐乐功能设计计划书/
 
 # Don't ignore these specific files in the root directory
-!android\app\src\main\res
 !.gitignore
 !pubspec.yaml
 !pubspec.lock
