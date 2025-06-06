@@ -69,6 +69,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   // 用于跟踪每日行程的展开状态，key 是 dayIndex
   Map<int, bool> _isDayExpanded = {};
 
+  // New field to track flashing day index
+  int _flashingDayIndex = -1;
+
   @override
   void initState() {
     super.initState();
@@ -294,19 +297,89 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }
   }
 
-  // *** 新增/保持: _scrollToDay ***
+  // *** Fixed: _scrollToDay with improved and reliable scrolling ***
   void _scrollToDay(int dayIndex) {
-    if (dayIndex >= 0 && dayIndex < _daySectionKeys.length) {
+    if (dayIndex < 0 || dayIndex >= _daySectionKeys.length || !mounted) return;
+    
       final key = _daySectionKeys[dayIndex];
-      if (key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
+    
+    // Update selected day index and ensure expansion
+    setState(() {
+      _selectedDayIndex = dayIndex;
+      _isDayExpanded[dayIndex] = true;
+    });
+
+    // Use a longer delay to ensure state updates are applied completely
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      
+      // Find the context associated with the key
+      final context = key.currentContext;
+      if (context == null) {
+        print('警告: 未找到日期 ${dayIndex + 1} 的视图');
+        return;
+      }
+      
+      // Method 1: Use direct scroll controller positioning
+      try {
+        final RenderBox box = context.findRenderObject() as RenderBox;
+        final position = box.localToGlobal(Offset.zero);
+        
+        // Calculate the current scroll position
+        final double currentScrollOffset = _itineraryScrollController.offset;
+        
+        // Calculate target position - account for top bar, day tabs, and add some padding
+        // This positions the day with some space at the top for better visibility
+        final topPadding = MediaQuery.of(context).padding.top; // Status bar height
+        final appBarHeight = 56.0; // Approximate app bar height
+        final tabsHeight = 120.0; // Approximate height of all headers (date capsule + bottom switcher)
+        final extraPadding = 12.0; // Extra space for comfort
+        
+        // Target position: global position minus fixed headers and current scroll
+        final targetOffset = position.dy - (topPadding + appBarHeight + tabsHeight + extraPadding);
+        
+        print('滚动到第 ${dayIndex + 1} 天: 位置 $targetOffset (从 $currentScrollOffset)');
+        
+        _itineraryScrollController.animateTo(
+          targetOffset,
           duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-          alignment: 0.0, 
+          curve: Curves.easeOutCubic,
+        );
+      } catch (e) {
+        print('方法1滚动失败: $e');
+        
+        // Method 2: Fallback to Scrollable.ensureVisible
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          alignment: 0.0, // Align to top
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
         );
       }
-    }
+      
+      // Visual feedback animation
+      _flashDaySection(dayIndex);
+    });
+  }
+  
+  // New method to provide visual feedback when scrolling to a section
+  void _flashDaySection(int dayIndex) {
+    if (!mounted) return;
+    
+    // This will be used by the _ActivityDaySection to show a highlight animation
+    setState(() {
+      _flashingDayIndex = dayIndex;
+    });
+    
+    // Reset the flashing state after animation completes
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          _flashingDayIndex = -1;
+        });
+      }
+    });
   }
 
   void _addDay() {
@@ -367,7 +440,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         currentDay.activities.add(activityToAdd);
         _isDayExpanded[dayIndex] = true;
       });
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已在本地添加，请点击顶部“保存计划”以同步。')));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已在本地添加，请点击顶部"保存计划"以同步。')));
     }
   }
 
@@ -389,7 +462,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         day.activities[activityIndex] = result; // 用编辑后的活动替换
       });
       // 提示用户需要保存整个行程
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请点击顶部“保存计划”以同步到服务器。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请点击顶部"保存计划"以同步到服务器。')));
     }
   }
 
@@ -442,7 +515,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         context: context,
         builder: (BuildContext context) => AlertDialog(
               title: const Text('删除活动'),
-              content: Text('确定要删除活动 “${activity.title}” 吗？'),
+              content: Text('确定要删除活动 " ${activity.title} " 吗？'),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
                 TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除', style: TextStyle(color: Colors.red))),
@@ -499,7 +572,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       }
     });
     // 注意：这个前端状态的改变不会直接保存到后端，除非你有特定API来同步这个状态
-    // 或者，这个状态仅用于UI展示，实际的“完成”可能通过其他方式记录
+    // 或者，这个状态仅用于UI展示，实际的"完成"可能通过其他方式记录
   }
 
   List<ApiTicket> _getTicketsForCurrentDay(DateTime? currentDate) {
@@ -550,7 +623,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     await flutterLocalNotificationsPlugin.show(
       0, // 通知的唯一 ID
       '旅行已开始', // 通知标题
-      '您的“${_userTripData!.userTripNameOverride}”行程已正式进入旅行模式！', // 通知内容
+      '您的"${_userTripData!.userTripNameOverride}"行程已正式进入旅行模式！', // 通知内容
       notificationDetails,
       payload: 'trip_started_payload_${_userTripData!.id}', // 点击通知时传递的数据
     );
@@ -692,7 +765,28 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                       onChanged: (value) { setStateDialog(() { tempDialogCoverUrl = value.isNotEmpty ? value : null; }); },
                     ),
                     if (tempDialogCoverUrl != null && tempDialogCoverUrl!.isNotEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(tempDialogCoverUrl!, height: 80, width: double.infinity, fit: BoxFit.cover, errorBuilder: (c,e,s) => Container(height: 60, color: Colors.grey[200], child: Center(child: Text("图片预览失败", style: TextStyle(color: Colors.red.shade700, fontSize: 12)))),),),),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            tempDialogCoverUrl!,
+                            height: 80,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => Container(
+                              height: 60,
+                              color: Colors.grey[200],
+                              child: Center(
+                                child: Text(
+                                  "图片预览失败",
+                                  style: TextStyle(color: Colors.red.shade700, fontSize: 12)
+                                )
+                              )
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     TextField(controller: _editableOriginController, decoration: const InputDecoration(labelText: "出发地"),),
                     const SizedBox(height: 8),
@@ -710,8 +804,8 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         });
 
     if (result == true && mounted) {
-      // 用户点击了“应用更改”，本地 _editable 控制器中的值已更新
-      // 实际的保存操作将在用户点击顶部的“保存计划”按钮时通过 _saveChanges() 触发
+      // 用户点击了"应用更改"，本地 _editable 控制器中的值已更新
+      // 实际的保存操作将在用户点击顶部的"保存计划"按钮时通过 _saveChanges() 触发
       setState(() {
         // 你可以决定是否在这里用 _editable 控制器的值更新 _userTripData 的本地显示
         // 或者依赖于 _saveChanges 成功后再通过 _loadUserTripDetails 刷新
@@ -721,7 +815,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         _userTripData?.destination = _editableDestinationController.text;
         // ... 更新 _userTripData 的其他字段 ...
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更改已在本地应用，请点击“保存计划”进行最终保存。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更改已在本地应用，请点击"保存计划"进行最终保存。')));
     }
   }
 
@@ -895,33 +989,52 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   selected: isSelected,
                   onSelected: (selected) {
                     if (selected) {
-                      if(mounted) {
+                      // Always make sure we're in the right view (itinerary)
+                      if (_mainContentPageController.hasClients && _currentMainViewIndex != 0) {
+                        _mainContentPageController.jumpToPage(0);
+                      }
+                      
+                      // First expand the day and update selection state
                         setState(() {
                           _selectedDayIndex = index;
-                          if (!_isDayExpanded[index]!) { // *** 如果未展开则展开 ***
-                            _isDayExpanded[index] = true;
-                          }
+                        _isDayExpanded[index] = true; // Always expand the selected day
+                      });
+                      
+                      // Ensure the day is expanded before scrolling
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        // Use a slight delay to ensure the UI has updated
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (!mounted) return;
+                          _scrollToDay(index);
                         });
-                      }
-                      if (_mainContentPageController.hasClients && _currentMainViewIndex != 0) {
-                          _mainContentPageController.jumpToPage(0);
-                      }
-                      _scrollToDay(index); // *** 滚动到选中的天 ***
+                      });
                     }
                   },
-                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.10),
+                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.15),
+                  avatar: isSelected ? Icon(
+                    Icons.calendar_today_rounded,
+                    size: 16,
+                    color: Theme.of(context).primaryColor,
+                  ) : null,
                   labelStyle: TextStyle(
                     color: isSelected ? Theme.of(context).primaryColor : Colors.grey[700],
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontSize: isSelected ? 14 : 13,
                   ),
                   backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  pressElevation: 0,
+                  elevation: isSelected ? 1 : 0,
+                  pressElevation: 2,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
-                      side: BorderSide(color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.7) : Colors.grey[300]!)
+                      side: BorderSide(
+                        color: isSelected 
+                            ? Theme.of(context).primaryColor 
+                            : Colors.grey[300]!,
+                        width: isSelected ? 1.5 : 1,
+                      )
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
               );
             },
@@ -967,7 +1080,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Text(
-            _currentMode == TripMode.edit ? '请在上方日期栏点击“添加日期”以开始规划您的行程。' : '此行程当前没有日期安排。',
+            _currentMode == TripMode.edit ? '请在上方日期栏点击"添加日期"以开始规划您的行程。' : '此行程当前没有日期安排。',
             style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             textAlign: TextAlign.center,
           ),
@@ -975,9 +1088,15 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       );
     }
 
-    return ListView.builder(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        // Optional: track scroll position to improve sync between tab and content
+        return false;
+      },
+      child: ListView.builder(
       controller: _itineraryScrollController,
       padding: const EdgeInsets.all(16.0),
+        physics: const ClampingScrollPhysics(),  // Better scroll behavior
       itemCount: _userTripData!.days.length,
       itemBuilder: (context, dayIndex) {
         final dayData = _userTripData!.days[dayIndex];
@@ -990,6 +1109,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           onExpansionChanged: (expanded) {
             setState(() {
               _isDayExpanded[dayIndex] = expanded;
+                if (expanded && _selectedDayIndex != dayIndex) {
+                  _selectedDayIndex = dayIndex; // Update selected day when manually expanded
+                }
             });
           },
           onEditActivity: (activity, activityIndex) {
@@ -1000,12 +1122,12 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           },
           activityUiStatusMap: _activityUiStatus,
           onActivityStatusChange: _handleActivityStatusChange,
-          // *** 新增传递 onDeleteActivity 参数 ***
           onDeleteActivity: (activityToDelete) { 
             _deleteActivity(dayData, activityToDelete);
           },
         );
       },
+      ),
     );
   }
 
@@ -1113,7 +1235,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     return FloatingActionButton(
       key: const ValueKey('collapsedAiButton'),
       onPressed: () {
-        if (mounted) { setState(() { _isAiChatExpanded = true; });}
+        if (mounted) setState(() { _isAiChatExpanded = true; });
         WidgetsBinding.instance.addPostFrameCallback((_) => _aiFocusNode.requestFocus());
       },
       backgroundColor: Theme.of(context).colorScheme.secondary,
@@ -1300,34 +1422,234 @@ class _ActivityDaySection extends StatelessWidget {
     if (dayData.date != null) {
       dayTitle += ' (${dayData.date!.month}/${dayData.date!.day})';
     }
+
+    // 提取主题或标题
+    String dayTheme = "";
     if (dayData.title != null && dayData.title!.isNotEmpty) {
-      dayTitle += ' - ${dayData.title}';
+      final String title = dayData.title!;
+      if (title.contains("：")) {
+        dayTheme = title.split("：")[1].trim();
+      } else if (title.contains(":")) {
+        dayTheme = title.split(":")[1].trim();
+      } else if (title.contains("-")) {
+        dayTheme = title.split("-")[1].trim();
+      } else {
+        dayTheme = title;
+      }
     }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16.0),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200, width: 1)
+    // 检查是否为当前选中的天数
+    bool isCurrentSelectedDay = false;
+    bool isFlashing = false;
+    if (context.findAncestorStateOfType<_TripDetailPageState>() != null) {
+      final state = context.findAncestorStateOfType<_TripDetailPageState>()!;
+      isCurrentSelectedDay = state._selectedDayIndex == dayIndex;
+      isFlashing = state._flashingDayIndex == dayIndex;
+    }
+
+    // 根据日期索引生成不同的主题颜色
+    List<Color> dayColors = [
+      Colors.blue.shade700,
+      Colors.teal.shade700,
+      Colors.purple.shade700,
+      Colors.orange.shade700,
+      Colors.green.shade700,
+      Colors.red.shade700,
+    ];
+    
+    final Color dayColor = dayColors[dayIndex % dayColors.length];
+    final Color bgColor = isFlashing 
+        ? dayColor.withOpacity(0.15)
+        : isCurrentSelectedDay 
+            ? dayColor.withOpacity(0.08) 
+            : Colors.white;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isFlashing 
+            ? [BoxShadow(color: dayColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)]
+            : isCurrentSelectedDay 
+                ? [BoxShadow(color: dayColor.withOpacity(0.2), blurRadius: 4, spreadRadius: 1)]
+                : [BoxShadow(color: Colors.grey.shade200, blurRadius: 2)],
       ),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            title: Text(dayTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            trailing: IconButton(
-              icon: Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.grey[700]),
-              onPressed: () => onExpansionChanged(!isExpanded),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 16.0),
+        elevation: 0, // 使用自定义阴影，所以卡片本身无阴影
+        color: bgColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isFlashing 
+                ? dayColor
+                : isCurrentSelectedDay 
+                    ? dayColor.withOpacity(0.5) 
+                    : Colors.grey.shade200, 
+            width: isFlashing ? 2.0 : isCurrentSelectedDay ? 1.5 : 1
+          )
+        ),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () {
+                onExpansionChanged(!isExpanded);
+                
+                // Update the selected day in the parent state
+                if (context.findAncestorStateOfType<_TripDetailPageState>() != null) {
+                  final state = context.findAncestorStateOfType<_TripDetailPageState>()!;
+                  state.setState(() {
+                    state._selectedDayIndex = dayIndex;
+                  });
+                  // Trigger scroll to this day
+                  state._scrollToDay(dayIndex);
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isFlashing 
+                      ? dayColor.withOpacity(0.2)
+                      : isCurrentSelectedDay 
+                          ? dayColor.withOpacity(0.1) 
+                          : dayColor.withOpacity(0.05),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                  child: Row(
+                    children: [
+                      // 左侧竖条标记
+                      Container(
+                        width: 4,
+                        height: 28,
+                        margin: EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          color: dayColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      
+                      // 日期和主题
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 日期显示
+                            Text(
+                              dayTitle, 
+                              style: TextStyle(
+                                fontSize: 16, 
+                                fontWeight: FontWeight.bold,
+                                color: isFlashing 
+                                    ? dayColor
+                                    : isCurrentSelectedDay 
+                                        ? dayColor
+                                        : dayColor
+                              )
+                            ),
+                            // 主题显示（如果有）
+                            if (dayTheme.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  dayTheme,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      
+                      // 右侧控件
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 当前选择标记
+                          if (isCurrentSelectedDay)
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isFlashing ? dayColor : dayColor.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(12)
+                              ),
+                              child: Text(
+                                '当前选择', 
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold
+                                )
+                              ),
+                            ),
+                          // 展开/收起按钮
+                          IconButton(
+                            icon: Icon(
+                              isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, 
+                              color: isFlashing 
+                                  ? dayColor
+                                  : isCurrentSelectedDay 
+                                      ? dayColor 
+                                      : Colors.grey[700],
+                              size: 28,
+                            ),
+                            onPressed: () => onExpansionChanged(!isExpanded),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            onTap: () => onExpansionChanged(!isExpanded),
-          ),
-          if (isExpanded)
-            Padding(
-              padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0), // 调整内边距
-              child: _buildActivitiesListForDay(context),
-            ),
-        ],
+            if (isExpanded)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                // 内容区域的装饰
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 日期描述（如果有）
+                      if (dayData.description != null && dayData.description!.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(14),
+                          margin: EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: dayColor.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: dayColor.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            dayData.description!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.black87,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      
+                      // 活动列表
+                      _buildActivitiesListForDay(context),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1353,7 +1675,13 @@ class _ActivityDaySection extends StatelessWidget {
                   mode: mode,
                   onEdit: () => onEditActivity(activities[i], i),
                   uiStatus: activities[i].id != null ? activityUiStatusMap[activities[i].id!] : null,
-                  onStatusChange: mode == TripMode.travel ? (newStatus) { /* ... */ } : null,
+                  onStatusChange: mode == TripMode.travel 
+                    ? (newStatus) {
+                        if (activities[i].id != null) {
+                          onActivityStatusChange(activities[i].id!, newStatus);
+                        }
+                      } 
+                    : null,
                 ),
               ),
               if (mode == TripMode.edit)
@@ -1364,7 +1692,7 @@ class _ActivityDaySection extends StatelessWidget {
                     onPressed: () => onDeleteActivity(activities[i]),
                     tooltip: '删除此活动',
                     padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    constraints: const BoxConstraints(),
                   ),
                 ),
             ],

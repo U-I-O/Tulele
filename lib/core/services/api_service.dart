@@ -8,7 +8,7 @@ import '../models/api_user_trip_model.dart'; // 确保 ApiTicket 等嵌套模型
 class ApiService {
   // final String _baseUrl = "http://127.0.0.1:5000/api"; // 开发时用
   // final String _baseUrl = "http://localhost:5000/api"; // 或者你的实际部署地址
-  final String _baseUrl = "http://192.168.170.89:5000/api"; // 生产环境
+  final String _baseUrl = "http://192.168.75.89:5000/api"; // 生产环境
 
   Future<Map<String, String>> _getHeaders() async {
     String? token = await AuthUtils.getAccessToken();
@@ -320,6 +320,75 @@ class ApiService {
     } catch (e) {
       print('Error creating user trip: $e');
       throw Exception('Error creating user trip: $e');
+    }
+  }
+
+  /// 从AI生成的行程文本创建UserTrip
+  Future<ApiUserTrip> createUserTripFromAiGenerated(String aiGeneratedText) async {
+    try {
+      // 获取当前用户ID
+      String? userId = await AuthUtils.getCurrentUserId();
+      if (userId == null) {
+        throw Exception('User is not logged in.');
+      }
+      
+      // 解析AI生成的文本到ApiUserTrip模型
+      ApiUserTrip parsedTrip = ApiUserTrip.fromAiGeneratedPlan(
+        aiGeneratedText, 
+        creatorId: userId
+      );
+      
+      // 调试信息：确认天数
+      print('AI解析后的行程天数: ${parsedTrip.days.length}');
+      for (int i = 0; i < parsedTrip.days.length; i++) {
+        print('第 ${i+1} 天: ${parsedTrip.days[i].title}, 活动数量: ${parsedTrip.days[i].activities.length}');
+      }
+      
+      // 确保至少有一天的行程
+      if (parsedTrip.days.isEmpty) {
+        print('警告: 解析后的行程天数为0，将添加默认天');
+        DateTime now = DateTime.now();
+        parsedTrip.days.add(ApiDayFromUserTrip(
+          dayNumber: 1,
+          date: now,
+          title: '默认行程第一天',
+          description: '系统自动创建的默认行程',
+          activities: [],
+        ));
+      }
+      
+      // 检查解析出的目的地
+      if (parsedTrip.destination == null || parsedTrip.destination!.isEmpty) {
+        // 尝试从文本中提取目的地
+        RegExp cityRegex = RegExp(r'([\u4e00-\u9fa5]{2,4})(?:5|五)日|(\d+)日([\u4e00-\u9fa5]{2,4})');
+        var match = cityRegex.firstMatch(aiGeneratedText);
+        if (match != null) {
+          String city = match.group(1) ?? match.group(3) ?? '未知地点';
+          parsedTrip.destination = city;
+        } else {
+          // 常见城市列表
+          List<String> cities = ['北京', '上海', '广州', '深圳', '兰州', '西安', '成都'];
+          for (String city in cities) {
+            if (aiGeneratedText.contains(city)) {
+              parsedTrip.destination = city;
+              break;
+            }
+          }
+        }
+      }
+      
+      // 将解析后的模型转换为JSON
+      Map<String, dynamic> tripJson = parsedTrip.toJson();
+      
+      // 确保创建的行程有正确的天数
+      print('准备发送到API的行程JSON数据:');
+      print('天数: ${tripJson['days']?.length ?? 0}');
+      
+      // 调用现有的createUserTrip方法创建行程
+      return await createUserTrip(tripJson);
+    } catch (e) {
+      print('Error creating user trip from AI text: $e');
+      throw Exception('无法从AI生成的行程创建用户行程: $e');
     }
   }
 

@@ -13,37 +13,54 @@ class DeepseekApi {
   // 创建API服务实例
   final ApiService _apiService = ApiService();
 
-  // 是否使用模拟响应 (临时解决方案，当API无法连接时)
+  // 设置为false以确保一定调用后端API
   static const bool _useMockResponse = false;
 
   /// 发送聊天消息到API
-  Future<ChatMessage> sendChatMessage(String message, List<ChatMessage> history) async {
-    // 如果强制使用模拟响应，直接返回模拟响应
-    if (_useMockResponse) {
-      print('使用模拟AI响应');
-      return _generateMockResponse(message);
-    }
-
+  Future<ChatMessage> sendChatMessage(String message, List<dynamic> history) async {
     try {
-      // 将ChatMessage列表转换为适合API的格式
-      final List<Map<String, dynamic>> formattedHistory = history
-          .where((msg) => msg.type == ChatMessageType.text) // 只包含文本消息
-          .take(5) // 只保留最近5条消息
-          .map((msg) {
-            return {
+      print('调用后端API聊天: $message');
+      
+      // 将聊天历史转换为API所需格式
+      final List<Map<String, dynamic>> formattedHistory = [];
+      
+      // 处理不同格式的聊天历史
+      for (var msg in history) {
+        if (msg is ChatMessage) {
+          // 如果是ChatMessage类型
+          if (msg.type == ChatMessageType.text) {
+            formattedHistory.add({
               'role': msg.isUserMessage ? 'user' : 'assistant',
               'content': msg.content,
-            };
-          }).toList();
+            });
+          }
+        } else if (msg is Map) {
+          // 如果是Map类型
+          formattedHistory.add({
+            'role': msg['isUserMessage'] == true ? 'user' : 'assistant',
+            'content': msg['content'] ?? '',
+          });
+        }
+      }
+      
+      // 限制历史记录条数 - 只保留最近5条
+      final limitedHistory = formattedHistory.length > 5 
+          ? formattedHistory.sublist(formattedHistory.length - 5) 
+          : formattedHistory;
 
+      print('📤 发送到API的数据: message=$message, history=${jsonEncode(limitedHistory)}');
+      print('📡 调用AI聊天接口');
+      
       // 调用后端AI聊天接口
-      final response = await _apiService.sendAiChatMessage(message, formattedHistory);
+      final response = await _apiService.sendAiChatMessage(message, limitedHistory);
+      
+      print('📥 收到后端响应: ${jsonEncode(response)}');
       
       // 解析响应
-      final content = response['content'] as String;
-      final List<String> suggestions = response.containsKey('suggestions') 
+      final content = response['content'] as String? ?? '抱歉，无法获取回复内容';
+      final List<String> suggestions = response.containsKey('suggestions') && response['suggestions'] != null
           ? List<String>.from(response['suggestions'])
-          : [];
+          : ['帮我规划行程', '推荐热门目的地', '查看我的行程'];
       
       return ChatMessage(
         content: content,
@@ -51,14 +68,33 @@ class DeepseekApi {
         suggestions: suggestions,
       );
     } catch (e) {
-      print('API调用失败: $e');
-      // 如果API调用失败，返回模拟响应
-      return _generateMockResponse(message);
+      print('❌ API调用失败: $e');
+      // 错误时抛出异常，不使用模拟数据
+      String errorMessage = '与AI服务通信失败';
+      
+      // 提取更具体的错误信息
+      if (e.toString().contains('422')) {
+        errorMessage = '与AI服务通信失败: 请求格式错误';
+      } else if (e.toString().contains('401')) {
+        errorMessage = '与AI服务通信失败: API认证失败';
+      } else if (e.toString().contains('429')) {
+        errorMessage = '与AI服务通信失败: 请求频率超限';
+      } else if (e.toString().contains('500')) {
+        errorMessage = '与AI服务通信失败: 服务器内部错误';
+      } else if (e.toString().contains('timeout')) {
+        errorMessage = '与AI服务通信失败: 请求超时';
+      } else {
+        errorMessage = '与AI服务通信失败: ${e.toString()}';
+      }
+      
+      throw Exception(errorMessage);
     }
   }
 
   /// 生成模拟AI响应
   ChatMessage _generateMockResponse(String message) {
+    print('⚠️ 使用模拟响应，原因：实际API调用失败或被跳过');
+    
     String response;
     List<String> suggestions = [];
     
@@ -85,72 +121,94 @@ class DeepseekApi {
   }
 
   /// 生成旅游行程规划
-  Future<Map<String, dynamic>> generateTripPlan(String prompt, List<ChatMessage> history) async {
-    // 解析用户请求中的关键信息
-    String destination = _extractDestination(prompt);
-    int days = _extractDays(prompt);
-    List<String> tags = _extractTags(prompt);
-    
-    // 如果强制使用模拟数据，直接返回生成的行程
-    if (_useMockResponse) {
-      print('使用模拟行程数据');
-      return _generateDetailedMockTrip(destination, days, tags);
-    }
-    
+  Future<Map<String, dynamic>> generateTripPlan(String prompt, List<dynamic> history) async {
     try {
+      print('调用后端API生成行程: $prompt');
+      
       // 将聊天历史转换为API所需格式
-      final List<Map<String, dynamic>> formattedHistory = history
-          .where((msg) => msg.type == ChatMessageType.text)
-          .take(5)
-          .map((msg) {
-            return {
+      final List<Map<String, dynamic>> formattedHistory = [];
+      
+      // 处理不同格式的聊天历史
+      for (var msg in history) {
+        if (msg is ChatMessage) {
+          // 如果是ChatMessage类型
+          if (msg.type == ChatMessageType.text) {
+            formattedHistory.add({
               'role': msg.isUserMessage ? 'user' : 'assistant',
               'content': msg.content,
-            };
-          }).toList();
+            });
+          }
+        } else if (msg is Map) {
+          // 如果是Map类型
+          formattedHistory.add({
+            'role': msg['isUserMessage'] == true ? 'user' : 'assistant',
+            'content': msg['content'] ?? '',
+          });
+        }
+      }
+      
+      // 限制历史记录条数
+      final limitedHistory = formattedHistory.take(5).toList();
+      
+      print('格式化后的历史记录: ${limitedHistory.length}条消息');
       
       // 调用后端AI生成行程接口
       final Map<String, dynamic> tripData = 
-          await _apiService.generateAiTripPlan(prompt, formattedHistory);
+          await _apiService.generateAiTripPlan(prompt, limitedHistory);
       
-      // 验证和修正行程数据
-      return _validateAndFixTripData(tripData, destination, days, tags);
+      print('后端返回行程数据');
+      
+      return tripData;
     } catch (e) {
       print('生成行程失败: $e');
-      // 如果API调用失败，返回模拟行程数据
-      return _generateDetailedMockTrip(destination, days, tags);
+      // 错误时抛出异常，不使用前端模拟数据
+      throw Exception('无法生成行程: $e');
     }
   }
 
   /// 修改现有行程
-  Future<Map<String, dynamic>> modifyTripPlan(String prompt, Map<String, dynamic> currentPlan, List<ChatMessage> history) async {
-    // 如果强制使用模拟数据，直接返回原行程（略作修改）
-    if (_useMockResponse) {
-      print('使用模拟修改行程');
-      return _simulateModification(currentPlan);
-    }
-    
+  Future<Map<String, dynamic>> modifyTripPlan(String prompt, Map<String, dynamic> currentPlan, List<dynamic> history) async {
     try {
+      print('调用后端API修改行程: $prompt');
+      
       // 将聊天历史转换为API所需格式
-      final List<Map<String, dynamic>> formattedHistory = history
-          .where((msg) => msg.type == ChatMessageType.text)
-          .take(5)
-          .map((msg) {
-            return {
+      final List<Map<String, dynamic>> formattedHistory = [];
+      
+      // 处理不同格式的聊天历史
+      for (var msg in history) {
+        if (msg is ChatMessage) {
+          // 如果是ChatMessage类型
+          if (msg.type == ChatMessageType.text) {
+            formattedHistory.add({
               'role': msg.isUserMessage ? 'user' : 'assistant',
               'content': msg.content,
-            };
-          }).toList();
+            });
+          }
+        } else if (msg is Map) {
+          // 如果是Map类型
+          formattedHistory.add({
+            'role': msg['isUserMessage'] == true ? 'user' : 'assistant',
+            'content': msg['content'] ?? '',
+          });
+        }
+      }
+      
+      // 限制历史记录条数
+      final limitedHistory = formattedHistory.take(5).toList();
+      
+      print('格式化后的历史记录: ${limitedHistory.length}条消息');
+      print('当前行程数据: ${currentPlan['name']}');
       
       // 调用后端AI修改行程接口
-      final modifiedPlan = await _apiService.modifyAiTripPlan(prompt, currentPlan, formattedHistory);
+      final modifiedPlan = await _apiService.modifyAiTripPlan(prompt, currentPlan, limitedHistory);
       
-      // 验证修改后的行程
-      return _validateModifiedPlan(modifiedPlan, currentPlan);
+      print('后端返回修改后的行程数据');
+      
+      return modifiedPlan;
     } catch (e) {
       print('修改行程失败: $e');
-      // 如果API调用失败，尝试简单模拟修改
-      return _simulateModification(currentPlan);
+      // 错误时抛出异常，不使用前端模拟数据
+      throw Exception('无法修改行程: $e');
     }
   }
 
