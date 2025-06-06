@@ -7,7 +7,6 @@
 # Except for these directories which we want to ignore
 /.dart_tool/
 /.idea/
-/android/
 /build/
 /ios/
 /linux/
