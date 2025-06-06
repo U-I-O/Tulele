@@ -7,8 +7,9 @@ import 'place_search_page.dart'; // 导入地点搜索页和PoiInfo
 class ActivityEditPage extends StatefulWidget {
   final ApiActivityFromUserTrip? initialActivity;
   final DateTime? dayDate;
+  final String? destinationCity;
 
-  const ActivityEditPage({super.key, this.initialActivity, required this.dayDate});
+  const ActivityEditPage({super.key, this.initialActivity, required this.dayDate,this.destinationCity,});
 
   @override
   State<ActivityEditPage> createState() => _ActivityEditPageState();
@@ -42,6 +43,10 @@ class _ActivityEditPageState extends State<ActivityEditPage> {
     _transportController = TextEditingController(text: activity?.transportation ?? '');
     _iconController = TextEditingController(text: activity?.icon ?? '');
 
+    if (activity?.coordinates != null) { // *** 初始化坐标 ***
+        _latitude = activity!.coordinates!['latitude'];
+        _longitude = activity!.coordinates!['longitude'];
+      }
     if (activity?.startTime != null) {
       try {
         final parts = activity!.startTime!.split(':');
@@ -161,24 +166,33 @@ class _ActivityEditPageState extends State<ActivityEditPage> {
   }
 
   Future<void> _navigateToPlaceSearch() async {
-    // ... (地点搜索导航逻辑保持不变) ...
-     final PoiInfo? selectedPoi = await Navigator.push(
+  // 从行程数据中获取目的地城市，如果它在 UserTrip 模型中可用
+  // 这里我们假设 _userTripData 在上一个页面(trip_detail_page)中可以通过某种方式获取
+  // 或者，更简单的方式是从 destinationController 获取
+  // 注意：高德API的city参数可以是城市名（如“北京”）或城市编码（“010”）
+  final String? city = widget.destinationCity; // 假设 _destinationController 在这里可用
+                                                 // 如果不可用，你需要将它从 trip_detail_page 传递到 activity_edit_page
+
+  final PoiInfo? selectedPoi = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const PlaceSearchPage()),
+      MaterialPageRoute(
+        builder: (context) => PlaceSearchPage(
+          city: city?.isNotEmpty == true ? city : null, // 传递给搜索页面
+        ),
+      ),
     );
 
-    if (selectedPoi != null && mounted) {
-      setState(() {
-        _locationNameController.text = selectedPoi.name;
-        _addressController.text = selectedPoi.address;
-        _latitude = selectedPoi.latitude;
-        _longitude = selectedPoi.longitude;
-      });
-    }
+  if (selectedPoi != null && mounted) {
+    setState(() {
+      _locationNameController.text = selectedPoi.name;
+      _addressController.text = selectedPoi.address;
+      _latitude = selectedPoi.latitude;
+      _longitude = selectedPoi.longitude;
+    });
   }
+}
 
   void _saveActivity() {
-    // ... (保存活动逻辑保持不变) ...
      if (_nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动名称不能为空')));
       return;
@@ -189,6 +203,10 @@ class _ActivityEditPageState extends State<ActivityEditPage> {
       title: _nameController.text,
       location: _locationNameController.text.isNotEmpty ? _locationNameController.text : null,
       address: _addressController.text.isNotEmpty ? _addressController.text : null,
+      // *** 添加坐标信息 ***
+      coordinates: (_latitude != null && _longitude != null) 
+          ? {"latitude": _latitude!, "longitude": _longitude!} 
+          : widget.initialActivity?.coordinates, // 如果没有新选择的，保留旧的 (编辑时)
       description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
       startTime: _startTime != null ? "${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}" : null,
       endTime: _endTime != null ? "${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}" : null,

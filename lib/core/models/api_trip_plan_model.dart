@@ -171,7 +171,7 @@ class ApiPlanActivity { // 对应 tripPlans.days.activities
     String? description;    // Corresponds to description (活动描述)
     String? location;       // Corresponds to location_name
     String? address;        // Corresponds to address
-    // Map<String, double>? coordinates; // Example: {"latitude": 39.9, "longitude": 116.3}
+    Map<String, double>? coordinates; // Example: {"latitude": 39.9, "longitude": 116.3}
     String? startTime;      // Corresponds to start_time
     String? endTime;        // Corresponds to end_time
     String? transportation;
@@ -188,7 +188,7 @@ class ApiPlanActivity { // 对应 tripPlans.days.activities
         this.description,
         this.location,
         this.address,
-        // this.coordinates,
+        this.coordinates,
         this.startTime,
         this.endTime,
         this.transportation,
@@ -206,7 +206,9 @@ class ApiPlanActivity { // 对应 tripPlans.days.activities
         description: json["description"],
         location: json["location_name"] ?? json["location"],
         address: json["address"],
-        // coordinates: json["coordinates"] == null ? null : Map<String,double>.from(json["coordinates"]),
+        coordinates: json["coordinates"] == null 
+            ? null 
+            : Map<String, double>.from(json["coordinates"].map((k, v) => MapEntry<String, double>(k, (v as num).toDouble()))), // *** 新增: 解析坐标 ***
         startTime: json["start_time"],
         endTime: json["end_time"],
         transportation: json["transportation"],
@@ -224,7 +226,7 @@ class ApiPlanActivity { // 对应 tripPlans.days.activities
         "description": description,
         "location_name": location, // 发送时用 location_name
         "address": address,
-        // "coordinates": coordinates,
+        "coordinates": coordinates,
         "start_time": startTime,
         "end_time": endTime,
         "transportation": transportation,

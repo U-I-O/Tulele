@@ -6,9 +6,9 @@ import '../models/api_trip_plan_model.dart';
 import '../models/api_user_trip_model.dart'; // 确保 ApiTicket 等嵌套模型也在此或其依赖中定义
 
 class ApiService {
-  // final String _baseUrl = "http://127.0.0.1:5000/api"; // 开发时用
+  // final String _baseUrl = "http://10.0.2.2:5000/api"; // 开发时用
   // final String _baseUrl = "http://localhost:5000/api"; // 或者你的实际部署地址
-  final String _baseUrl = "http://192.168.170.89:5000/api"; // 生产环境
+  final String _baseUrl = "http://192.168.170.250:5000/api"; // 生产环境
 
   Future<Map<String, String>> _getHeaders() async {
     String? token = await AuthUtils.getAccessToken();

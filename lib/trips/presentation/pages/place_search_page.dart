@@ -1,9 +1,10 @@
 // lib/trips/presentation/pages/place_search_page.dart
+import 'dart:developer';
 import 'package:flutter/material.dart';
-// 假设你使用 amap_flutter_search 插件
-// import 'package:amap_flutter_search/amap_flutter_search.dart'; 
 
-// 模拟高德POI搜索结果项
+import 'package:flutter_baidu_mapapi_search/flutter_baidu_mapapi_search.dart';
+import 'package:flutter_baidu_mapapi_base/flutter_baidu_mapapi_base.dart';
+
 class PoiInfo {
   final String name;
   final String address;
@@ -14,7 +15,8 @@ class PoiInfo {
 }
 
 class PlaceSearchPage extends StatefulWidget {
-  const PlaceSearchPage({super.key});
+  final String? city;
+  const PlaceSearchPage({super.key, this.city});
 
   @override
   State<PlaceSearchPage> createState() => _PlaceSearchPageState();
@@ -24,73 +26,74 @@ class _PlaceSearchPageState extends State<PlaceSearchPage> {
   final TextEditingController _searchController = TextEditingController();
   List<PoiInfo> _searchResults = [];
   bool _isSearching = false;
-  String _yourAmapKey = "YOUR_AMAP_KEY"; // <--- 在这里或通过配置传入你的高德Key
+  
+  // 根据官方文档，创建一个搜索实例并作为成员变量持有
+  final BMFPoiCitySearch _poiSearch = BMFPoiCitySearch();
 
   @override
   void initState() {
     super.initState();
-    // 初始化高德搜索SDK (如果插件需要)
-    // AMapFlutterSearch.setApiKey(iosKey: _yourAmapKey, androidKey: _yourAmapKey); // 示例
+    
+    // 在initState中为 _poiSearch 实例设置回调监听
+    _poiSearch.onGetPoiCitySearchResult(
+      callback: (BMFPoiSearchResult result, BMFSearchErrorCode errorCode) {
+        List<PoiInfo> newResults = [];
+        if (errorCode == BMFSearchErrorCode.NO_ERROR && result.poiInfoList != null) {
+          newResults = result.poiInfoList!.map((poi) {
+            return PoiInfo(
+              name: poi.name ?? '未知地点',
+              address: poi.address ?? '地址不详',
+              latitude: poi.pt?.latitude,
+              longitude: poi.pt?.longitude,
+            );
+          }).toList();
+        }
+        
+        if (mounted) {
+          setState(() {
+            _searchResults = newResults;
+            _isSearching = false;
+          });
+        }
+      }
+    );
   }
 
   Future<void> _searchPlace(String keyword) async {
     if (keyword.isEmpty) {
-      setState(() => _searchResults = []);
+      if (mounted) setState(() => _searchResults = []);
       return;
     }
-    setState(() => _isSearching = true);
+    if (mounted) setState(() => _isSearching = true);
 
-    // --- 实际的高德POI搜索逻辑 ---
-    // 这里是模拟，你需要用 amap_flutter_search 插件的真实API调用
-    // 例如:
-    /*
-    try {
-      final poiResult = await AMapFlutterSearch.searchKeyword(
-        keyword, 
-        city: "北京" // 可以让用户选择城市或自动定位
-      );
-      List<PoiInfo> results = poiResult.map((poi) => PoiInfo(
-        name: poi.title ?? '未知地点',
-        address: poi.address ?? '',
-        latitude: poi.latLonPoint?.latitude,
-        longitude: poi.latLonPoint?.longitude,
-      )).toList();
-      setState(() {
-        _searchResults = results;
-        _isSearching = false;
-      });
-    } catch (e) {
-      print("Error searching place: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("搜索地点失败: $e")));
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
-    }
-    */
+    // *** 核心修正：不再创建新的搜索实例 ***
+    // 移除: BMFPoiSearch poiSearch = BMFPoiSearch();
 
-    // 模拟API调用
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _searchResults = [
-        PoiInfo(name: "$keyword - 颐和园", address: "北京市海淀区新建宫门路19号", latitude: 40.0000, longitude: 116.2755),
-        PoiInfo(name: "$keyword - 故宫博物院", address: "北京市东城区景山前街4号", latitude: 39.9163, longitude: 116.3972),
-        PoiInfo(name: "$keyword - 天安门广场", address: "北京市东城区长安街", latitude: 39.9087, longitude: 116.3975),
-      ];
-      _isSearching = false;
-    });
-    // --- 模拟结束 ---
+    BMFPoiCitySearchOption option = BMFPoiCitySearchOption(
+      city: widget.city ?? '全国',
+      keyword: keyword,
+    );
+
+    // *** 核心修正：使用已持有并设置了监听的 _poiSearch 实例来发起搜索 ***
+    await _poiSearch.poiCitySearch(option);
+  }
+
+  @override
+  void dispose() {
+    // 可以在此注销监听，但当前插件版本似乎不需要手动操作
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // UI 部分无需修改
     return Scaffold(
       appBar: AppBar(
         title: TextField(
           controller: _searchController,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: '搜索地点名称...',
+            hintText: '在“${widget.city ?? '全国'}”搜索地点...',
             border: InputBorder.none,
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
@@ -108,24 +111,30 @@ class _PlaceSearchPageState extends State<PlaceSearchPage> {
       body: _isSearching
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
-              itemCount: _searchResults.length,
               itemBuilder: (context, index) {
-                final poi = _searchResults[index];
+                if (index != _searchResults.length - 1) {
+                  return Column(
+                    children: [
+                      ListTile(
+                        title: Text(_searchResults[index].name),
+                        subtitle: Text(_searchResults[index].address),
+                        onTap: () {
+                          Navigator.pop(context, _searchResults[index]);
+                        },
+                      ),
+                      const Divider(height: 1),
+                    ],
+                  );
+                }
                 return ListTile(
-                  leading: CircleAvatar(child: Text(poi.name.substring(0,1))), // 如图3样式
-                  title: Text(poi.name),
-                  subtitle: Text(poi.address),
-                  trailing: TextButton( // “添加”按钮
-                    child: const Text("添加"),
-                    onPressed: () {
-                      Navigator.pop(context, poi); // 返回选中的 PoiInfo 对象
-                    },
-                  ),
+                  title: Text(_searchResults[index].name),
+                  subtitle: Text(_searchResults[index].address),
                   onTap: () {
-                     Navigator.pop(context, poi);
-                  }
+                    Navigator.pop(context, _searchResults[index]);
+                  },
                 );
               },
+              itemCount: _searchResults.length,
             ),
     );
   }

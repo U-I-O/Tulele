@@ -48,6 +48,14 @@ dependencies:
   uuid: ^3.0.7
   intl: ^0.20.2
   get_it: ^7.6.7
+  # 百度地图官方插件
+  # 基础库 (必须)
+  flutter_baidu_mapapi_base: ^3.9.3
+  # 地图模块 (用于显示地图)
+  flutter_baidu_mapapi_map: ^3.9.3
+  # 搜索模块 (用于POI搜索)
+  flutter_baidu_mapapi_search: ^3.9.3
+
 
 dev_dependencies:
   flutter_test:
@@ -79,9 +87,10 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/icon/icon.png
+    - assets/icon/location.png
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

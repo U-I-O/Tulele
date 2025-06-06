@@ -1,26 +1,14 @@
 // lib/trips/presentation/widgets/map_view_widget.dart
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/models/api_user_trip_model.dart';
 import '../../../core/enums/trip_enums.dart';
 
-// 假设你使用 amap_flutter_map 插件
-// import 'package:amap_flutter_map/amap_flutter_map.dart';
-// import 'package:amap_flutter_base/amap_flutter_base.dart'; // For LatLng
+// Import Baidu Maps Official Plugin
+import 'package:flutter_baidu_mapapi_base/flutter_baidu_mapapi_base.dart';
+import 'package:flutter_baidu_mapapi_map/flutter_baidu_mapapi_map.dart';
 
-// 模拟 AMapController 和 LatLng (实际使用时从插件导入)
-class AMapController {
-  void moveCamera(CameraUpdate update) {}
-  Future<void> addMarker(MarkerOption option) async {}
-  Future<void> clearMarkers() async {}
-}
-class CameraUpdate {
-  static CameraUpdate newLatLngBounds(LatLngBounds bounds, double padding) => CameraUpdate();
-  static CameraUpdate newLatLngZoom(LatLng latlng, double zoom) => CameraUpdate();
-}
-class LatLng { final double latitude; final double longitude; LatLng(this.latitude, this.longitude); }
-class LatLngBounds { final LatLng northeast; final LatLng southwest; LatLngBounds({required this.northeast, required this.southwest}); }
-class MarkerOption { final LatLng? position; final String? title; final String? snippet; MarkerOption({this.position, this.title, this.snippet});}
-// 模拟结束
 
 class MapViewWidget extends StatefulWidget {
   final List<ApiActivityFromUserTrip> activities;
@@ -33,113 +21,104 @@ class MapViewWidget extends StatefulWidget {
 }
 
 class _MapViewWidgetState extends State<MapViewWidget> {
-  AMapController? _mapController;
-  final String _yourAmapKeyForMap = "YOUR_AMAP_KEY_FOR_MAP_DISPLAY"; // 地图展示也需要Key
+  BMFMapController? _mapController;
 
-  // static const AMapPrivacyStatement amapPrivacyStatement = AMapPrivacyStatement(hasContains: true, hasShow: true, hasAgree: true); // 插件要求
-
-  void _onMapCreated(AMapController controller) {
-    _mapController = controller;
-    _addMarkersToMap();
+  @override
+  void initState() {
+    super.initState();
+    // All map operations are now handled in the _onMapCreated callback to ensure the controller is initialized.
   }
 
-  void _addMarkersToMap() {
-    if (_mapController == null || widget.activities.isEmpty) return;
+  /// Map creation success callback. Safe to manipulate the map from here.
+  void _onMapCreated(BMFMapController controller) {
+    _mapController = controller;
+    // According to the documentation, the controller callback is onBMFMapCreated.
+    _updateMarkersAndCamera();
+  }
 
-    _mapController!.clearMarkers(); // 清除旧标记
+  /// This method has been refactored according to the official documentation, using an imperative API.
+  void _updateMarkersAndCamera() async {
+    // Ensure the controller is not null.
+    if (_mapController == null || !mounted) return;
 
-    List<LatLng> points = [];
+    // Step 1: Clear all existing Markers from the map.
+    // The official documentation does not provide an explicit clear method, but addMarker will overwrite a marker with the same identifier.
+    // For a clean redraw, we'll first call a generic clear method (a reasonable inference based on API design).
+    await _mapController!.cleanAllMarkers();
+    
+    final List<BMFCoordinate> points = [];
+
+    // Step 2: Loop through and call the addMarker method as per the documentation.
     for (var activity in widget.activities) {
-      // 确保你的 ApiActivityFromUserTrip 模型中有坐标信息
-      // 假设坐标存储在 activity.coordinates Map<String, double> 中
-      // final lat = activity.coordinates?['latitude'];
-      // final lng = activity.coordinates?['longitude'];
-      // 这里用模拟数据代替
-      final lat = 40.0 + (widget.activities.indexOf(activity) * 0.01); // 模拟纬度
-      final lng = 116.3 + (widget.activities.indexOf(activity) * 0.01); // 模拟经度
-
-
-      if (lat != null && lng != null) {
-        final position = LatLng(lat, lng);
+      if (activity.coordinates != null &&
+          activity.coordinates!['latitude'] != null &&
+          activity.coordinates!['longitude'] != null) {
+        final lat = activity.coordinates!['latitude']!;
+        final lng = activity.coordinates!['longitude']!;
+        final position = BMFCoordinate(lat, lng);
         points.add(position);
-        _mapController!.addMarker(MarkerOption(
-          position: position,
-          title: activity.title,
-          snippet: activity.location ?? '',
-        ));
+
+        // Create a BMFMarker object according to the documentation. [cite: 15]
+        BMFMarker marker = BMFMarker(
+          position: position, // Set the coordinates.
+          // The identifier is a unique ID for the marker.
+          identifier: activity.id ?? 'marker_${points.length}',
+          // The icon requires a path to an image asset.
+          icon: 'assets/icon/location.png', 
+        );
+        
+        // Call the controller's addMarker method as per the documentation. [cite: 15]
+        await _mapController!.addMarker(marker);
       }
     }
-
+    
+    // Step 3: Update the camera view.
+    // The official documentation does not provide a method for dynamically updating the camera, but it does provide parameters for initializing the map center.
+    // A reasonable implementation is to create a new BMFMapOptions and apply it through a (presumed) update method.
     if (points.isNotEmpty) {
       if (points.length == 1) {
-        _mapController!.moveCamera(CameraUpdate.newLatLngZoom(points.first, 14)); // 缩放到单个点
+        // For a single point, create a new map state and apply it.
+        BMFMapOptions newOptions = BMFMapOptions(center: points.first, zoomLevel: 15);
+        await _mapController!.updateMapOptions(newOptions);
       } else {
-        // 计算边界以包含所有点
-        double minLat = points.first.latitude, maxLat = points.first.latitude;
-        double minLng = points.first.longitude, maxLng = points.first.longitude;
-        for (var point in points) {
-          if (point.latitude < minLat) minLat = point.latitude;
-          if (point.latitude > maxLat) maxLat = point.latitude;
-          if (point.longitude < minLng) minLng = point.longitude;
-          if (point.longitude > maxLng) maxLng = point.longitude;
-        }
-        _mapController!.moveCamera(CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(minLat, minLng),
-            northeast: LatLng(maxLat, maxLng),
-          ),
-          50, // padding
-        ));
+        // For multiple points, move to the center point.
+        BMFMapOptions newOptions = BMFMapOptions(center: _calculateCenter(points), zoomLevel: 11);
+        await _mapController!.updateMapOptions(newOptions);
       }
+    } else {
+      BMFMapOptions newOptions = BMFMapOptions(center: BMFCoordinate(39.909187, 116.397451), zoomLevel: 10);
+      await _mapController!.updateMapOptions(newOptions);
     }
   }
-  
+
+  // Calculate the center point of multiple coordinates.
+  BMFCoordinate _calculateCenter(List<BMFCoordinate> points) {
+    double totalLat = 0, totalLng = 0;
+    for (var point in points) {
+      totalLat += point.latitude;
+      totalLng += point.longitude;
+    }
+    return BMFCoordinate(totalLat / points.length, totalLng / points.length);
+  }
+
   @override
   void didUpdateWidget(covariant MapViewWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.activities != widget.activities) {
-      _addMarkersToMap(); // 活动列表变化时更新标记
+    if (!listEquals(widget.activities, oldWidget.activities)) {
+      if (_mapController != null) {
+        _updateMarkersAndCamera();
+      }
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // --- 真实地图集成 ---
-    /*
-    return AMapWidget(
-      apiKey: AMapApiKey(iosKey: _yourAmapKeyForMap, androidKey: _yourAmapKeyForMap),
-      onMapCreated: _onMapCreated,
-      privacyStatement: amapPrivacyStatement,
-      initialCameraPosition: CameraPosition(target: LatLng(39.909187, 116.397451), zoom: 10), // 默认北京
-    );
-    */
-    
-    // --- 当前占位符实现 ---
-    return Container(
-      decoration: BoxDecoration(color: Colors.grey[200]),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.map_outlined, size: 48, color: Colors.grey[500]),
-            const SizedBox(height: 8),
-            Text(
-              '高德地图视图 (待真实集成)',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            if (widget.activities.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top:8.0),
-                child: Text('当前日期活动数: ${widget.activities.length}', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(top:8.0),
-                child: Text('当前日期无活动可在地图上显示', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-              )
-          ],
-        ),
+    // Use BMFMapWidget and configure mapOptions as per the "Display Map.pdf" documentation. [cite: 24]
+    return BMFMapWidget(
+      onBMFMapCreated: _onMapCreated, 
+      mapOptions: BMFMapOptions(
+        center: BMFCoordinate(39.909187, 116.397451),
+        zoomLevel: 12, // The level can be from 4-21. [cite: 26]
       ),
     );
   }

@@ -27,6 +27,9 @@
 !/assets/*
 !/assets/**
 
+!/android/app/src/main/java/com/example/tulele/MyApplication.java
+!/android/app/src/main/AndroidManifest.xml
+
 # Don't ignore the lib directory and its contents
 !/lib/
 !/lib/*

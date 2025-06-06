@@ -230,7 +230,7 @@ class ApiActivityFromUserTrip {
     String? description; // Corresponds to description (用户可改的活动描述)
     String? location;    // Corresponds to location_name
     String? address;
-    // Map<String, double>? coordinates;
+    Map<String, double>? coordinates;
     String? startTime;
     String? endTime;
     String? transportation;
@@ -249,7 +249,7 @@ class ApiActivityFromUserTrip {
         this.description,
         this.location,
         this.address,
-        // this.coordinates,
+        this.coordinates,
         this.startTime,
         this.endTime,
         this.transportation,
@@ -269,7 +269,9 @@ class ApiActivityFromUserTrip {
         description: json["description"],
         location: json["location_name"] ?? json["location"],
         address: json["address"],
-        // coordinates: json["coordinates"] == null ? null : Map<String, double>.from(json["coordinates"]),
+        coordinates: json["coordinates"] == null 
+            ? null 
+            : Map<String, double>.from(json["coordinates"].map((k, v) => MapEntry<String, double>(k, (v as num).toDouble()))),
         startTime: json["start_time"],
         endTime: json["end_time"],
         transportation: json["transportation"], 
@@ -290,7 +292,7 @@ class ApiActivityFromUserTrip {
         description: planActivity.description,
         location: planActivity.location,
         address: planActivity.address,
-        // coordinates: planActivity.coordinates,
+        coordinates: planActivity.coordinates,
         startTime: planActivity.startTime,
         endTime: planActivity.endTime,
         transportation: planActivity.transportation,
@@ -310,7 +312,7 @@ class ApiActivityFromUserTrip {
         "description": description,
         "location_name": location, // 发送时用 location_name
         "address": address,
-        // "coordinates": coordinates,
+        "coordinates": coordinates,
         "start_time": startTime,
         "end_time": endTime,
         "transportation": transportation,
@@ -331,7 +333,7 @@ class ApiActivityFromUserTrip {
         String? description,
         String? location,
         String? address,
-        // Map<String, double>? coordinates,
+        Map<String, double>? coordinates,
         String? startTime,
         String? endTime,
         String? transportation,
@@ -350,7 +352,7 @@ class ApiActivityFromUserTrip {
             description: description ?? this.description,
             location: location ?? this.location,
             address: address ?? this.address,
-            // coordinates: coordinates ?? this.coordinates,
+            coordinates: coordinates ?? this.coordinates,
             startTime: startTime ?? this.startTime,
             endTime: endTime ?? this.endTime,
             transportation: transportation ?? this.transportation,
