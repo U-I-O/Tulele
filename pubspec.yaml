@@ -101,7 +101,7 @@ flutter:
     - assets/icon/location.png
     - assets/icon/icon_mark.png
     - assets/img/
-    - resources
+    - resources/
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

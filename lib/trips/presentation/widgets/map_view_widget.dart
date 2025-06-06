@@ -147,11 +147,17 @@ class EnhancedMapViewWidget extends StatefulWidget {
 
 class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
   BMFMapController? _mapController;
-  final List<BMFMarker> _markers = [];
   // 增加反地理编码的搜索实例
   BMFReverseGeoCodeSearch? _reverseGeoSearch;
   BMFTransitRouteSearch? _transitRouteSearch;
   bool _isRoutePlanningLoading = false;
+  /// 路线 polyline
+  BMFPolyline? _polyline;
+  /// 路线数组，用于管理多条路线
+  final List<BMFPolyline> _polylines = [];
+  /// 路线ID计数器
+  int _polylineIdCounter = 0;
+  final List<BMFMarker> _markers = [];
   
   // 初始化地图选项
   final BMFMapOptions _initMapOptions = BMFMapOptions(
@@ -254,7 +260,11 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     _markers.clear();
     
     // 清除所有路线和覆盖物
-    await _mapController?.clearOverlays();
+    // await _mapController?.clearOverlays();
+    /// 添加路线polyline
+    if (_polyline != null) {
+      _mapController!.removeOverlay(_polyline!.id);
+    }
     
     // 检查是否有活动
     if (widget.activities.isEmpty) {
@@ -289,7 +299,7 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
         title: activity.title,
         subtitle: "${activity.startTime ?? ''} - ${activity.endTime ?? ''}",
         identifier: activity.id ?? 'marker_$i',
-        icon: 'assets/resources/icon_mark.png',
+        icon: 'resources/icon_mark.png',
         enabled: true,
       );
 
@@ -328,7 +338,9 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     debugPrint('=== 路线规划开始: ${activities.length}个活动点 ===');
     
     // 清除已有路线
-    // await _mapController?.clearOverlays();
+    if (_polyline != null) {
+      _mapController!.removeOverlay(_polyline!.id);
+    }
     
     // 尝试为每对相邻活动规划路线
     for (int i = 0; i < activities.length - 1; i++) {
@@ -413,66 +425,12 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     return completer.future;
   }
 
-  // 跨城交通规划
-  Future<void> _planCrossCityTransit(BMFPlanNode from, BMFPlanNode to, String fromCity, String toCity) async {
-    debugPrint('开始跨城交通规划: 从$fromCity到$toCity');
-    
-    // 创建跨城公交搜索实例
-    final massTransitSearch = BMFMassTransitRouteSearch();
-    
-    massTransitSearch.onGetMassTransitRouteSearchResult(callback: (result, errorCode) {
-      if (errorCode == BMFSearchErrorCode.NO_ERROR) {
-        debugPrint('跨城路线规划成功: ${result.routes?.length ?? 0}个方案');
-        _drawMassTransitRoute(result);
-      } else {
-        debugPrint('跨城路线规划失败: 错误码 $errorCode');
-        // 如果路线规划失败，改用简单连线
-        debugPrint('改用简单连线代替');
-        _addSimpleRoute([from.pt!, to.pt!]);
-      }
-    });
-    
-    // 创建跨城公交路线规划参数
-    final BMFMassTransitRoutePlanOption option = BMFMassTransitRoutePlanOption(
-      from: BMFPlanNode(pt: from.pt, cityName: fromCity),
-      to: BMFPlanNode(pt: to.pt, cityName: toCity),
-    );
-    
-    // 发起搜索
-    bool searchResult = await massTransitSearch.massTransitRouteSearch(option);
-    debugPrint('发起跨城交通规划搜索: ${searchResult ? "成功" : "失败"}');
-  }
-
   // =============== 新增高效版函数 ===============
   
   /// 高效版本的市内交通规划
   Future<void> _planTransitInCityEfficient(BMFPlanNode from, BMFPlanNode to, String city) async {
     debugPrint('开始高效版市内交通规划: $city');
     
-    // 清除现有路线
-    await _mapController?.clearOverlays();
-    
-    // 创建起点和终点标记
-    List<BMFMarker> markers = [];
-    
-    // 起点标记
-    BMFMarker startMarker = BMFMarker.icon(
-      position: from.pt!,
-      title: from.name,
-      icon: "assets/resources/icon_start.png",
-    );
-    markers.add(startMarker);
-    
-    // 终点标记
-    BMFMarker endMarker = BMFMarker.icon(
-      position: to.pt!,
-      title: to.name,
-      icon: "assets/resources/icon_end.png",
-    );
-    markers.add(endMarker);
-    
-    // 添加标记
-    await _mapController?.addMarkers(markers);
     
     // 设置回调
     final completer = Completer<bool>();
@@ -545,7 +503,7 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     
     try {
       // 使用普通线条，不使用动画
-      final polyline = BMFPolyline(
+      _polyline = BMFPolyline(
         width: 8,
         coordinates: points,
         indexs: [0],  // 使用单一索引绘制整条路径
@@ -555,7 +513,7 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
         lineCapType: BMFLineCapType.LineCapRound,
       );
       
-      bool result = await _mapController!.addPolyline(polyline);
+      bool result = await _mapController!.addPolyline(_polyline!);
       debugPrint('添加高效版路线: ${result ? "成功" : "失败"}');
       
       // 设置地图视图范围
@@ -603,6 +561,95 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     }
   }
   
+  /// 高效版本的跨城交通规划
+  Future<void> _planCrossCityTransit(BMFPlanNode from, BMFPlanNode to, String fromCity, String toCity) async {
+    debugPrint('开始高效版跨城交通规划: 从$fromCity到$toCity');    
+    // 设置回调
+    final completer = Completer<bool>();    
+    // 创建跨城公交搜索实例
+    final massTransitSearch = BMFMassTransitRouteSearch();    
+    // 设置回调
+    massTransitSearch.onGetMassTransitRouteSearchResult(callback: (result, errorCode) {
+      if (errorCode != BMFSearchErrorCode.NO_ERROR || result == null || result.routes == null || result.routes!.isEmpty) {
+        debugPrint('跨城交通规划失败或无结果: 错误码 $errorCode');
+        // 规划失败时直接连接起点和终点
+        _drawDirectLine(from.pt!, to.pt!);
+        completer.complete(false);
+        return;
+      }      
+      debugPrint('跨城交通规划成功: ${result.routes?.length ?? 0}个方案');      
+      // 使用第一个方案
+      final route = result.routes!.first;      
+      // 提取所有路线坐标点
+      List<BMFCoordinate> allPoints = [];      
+      // 遍历所有大段路线及子路段，提取坐标点
+      for (final massTransitStep in route.steps ?? []) {
+        for (final subStep in massTransitStep.steps ?? []) {
+          if (subStep.points != null && subStep.points!.isNotEmpty) {
+            allPoints.addAll(subStep.points!);
+          }
+        }
+      }      
+      // 使用官方示例的高效方式绘制路线
+      if (allPoints.length >= 2) {
+        _drawTexturedPolyline(allPoints);
+      } else {
+        // 如果没有足够的点，直接连接起点和终点
+        _drawDirectLine(from.pt!, to.pt!);
+      }
+      
+      completer.complete(true);
+    });
+    
+    // 创建跨城公交路线规划参数
+    final BMFMassTransitRoutePlanOption option = BMFMassTransitRoutePlanOption(
+      from: BMFPlanNode(pt: from.pt, cityName: fromCity),
+      to: BMFPlanNode(pt: to.pt, cityName: toCity),
+    );
+    
+    // 发起搜索
+    bool searchResult = await massTransitSearch.massTransitRouteSearch(option);
+    debugPrint('发起高效版跨城交通规划搜索: ${searchResult ? "成功" : "失败"}');
+    
+    // 等待回调完成
+    await completer.future;
+    return;
+  }
+  
+  /// 使用纹理绘制路线 - 官方推荐的高效方法
+  Future<void> _drawTexturedPolyline(List<BMFCoordinate> points) async {
+    debugPrint('使用纹理绘制路线, 点数量: ${points.length}');
+    
+    if (points.length < 2) return;
+    
+    try {
+      // 如果已有路线，移除它
+      if (_polyline != null) {
+        await _mapController!.removeOverlay(_polyline!.id);
+      }
+      
+      // 使用普通线条，不使用动画，优先尝试纹理
+      _polyline = BMFPolyline(
+        width: 8,
+        coordinates: points,
+        indexs: [0],  // 使用单一索引绘制整条路径
+        colors: [Colors.blue],
+        lineDashType: BMFLineDashType.LineDashTypeNone,
+        lineJoinType: BMFLineJoinType.LineJoinRound,
+        lineCapType: BMFLineCapType.LineCapRound,
+      );     
+      bool result = await _mapController!.addPolyline(_polyline!);
+      debugPrint('添加纹理路线: ${result ? "成功" : "失败"}');
+      
+      // 设置地图显示范围
+      _adjustMapViewToShowAllMarkers(points);
+    } catch (e) {
+      debugPrint('纹理路线绘制出错: $e');
+      
+      // 简单错误处理 - 使用普通线条
+      _addSimpleRoute(points);
+    }
+  }
   /// 使用两点直接绘制路线（可用作失败时的备选方案）
   Future<void> _drawDirectLine(BMFCoordinate start, BMFCoordinate end) async {
     debugPrint('绘制直线连接');
