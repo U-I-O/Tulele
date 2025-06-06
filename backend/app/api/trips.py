@@ -324,3 +324,205 @@ def add_user_trip_feed(trip_id):
     if UserTrip.add_feed(mongo, trip_id, data): # 假设 UserTrip 模型有 add_feed 方法
         return jsonify({'message': '动态添加成功'}), 200
     return jsonify({'error': '动态添加失败'}), 500
+
+# --- 行程分享功能 API端点 ---
+
+@api.route('/trips/sharing/invitations', methods=['POST'])
+def create_sharing_invitation():
+    """创建新的行程分享邀请"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '无效的数据'}), 400
+        
+        print(f"收到的邀请数据: {data}") # 调试日志
+        
+        required_fields = ['trip_id', 'sender_user_id', 'sender_name']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'缺少必要字段: {field}'}), 400
+        
+        # 处理日期时间字段
+        if 'expires_at' in data and isinstance(data['expires_at'], str):
+            try:
+                import datetime
+                # 尝试解析日期时间字符串（移除Z并添加UTC标识）
+                data['expires_at'] = datetime.datetime.fromisoformat(
+                    data['expires_at'].replace('Z', '+00:00')
+                )
+            except ValueError as e:
+                print(f"日期解析错误: {e}")
+                # 默认设置为7天后过期
+                data['expires_at'] = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
+        
+        from ..models import ShareInvitation
+        
+        # 验证行程是否存在
+        trip_id = data['trip_id']
+        from ..models import UserTrip
+        trip = UserTrip.get_user_trip_by_id(mongo, trip_id)
+        if not trip:
+            return jsonify({'error': '行程不存在或已被删除'}), 404
+            
+        # 验证发送者是否有权限邀请（应是行程创建者或管理员）
+        if trip['creator_id'] != data['sender_user_id']:
+            # 检查是否是管理员成员
+            is_admin = False
+            for member in trip.get('members', []):
+                if member.get('userId') == data['sender_user_id'] and member.get('role') in ['owner', 'admin']:
+                    is_admin = True
+                    break
+            
+            if not is_admin:
+                return jsonify({'error': '您没有权限邀请其他人加入此行程'}), 403
+        
+        invitation_id = ShareInvitation.create_invitation(mongo, data)
+        invitation = ShareInvitation.get_invitation_by_id(mongo, invitation_id)
+        
+        invitation_json = ShareInvitation.to_json(invitation)
+        print(f"创建的邀请: {invitation_json}")  # 调试日志
+        
+        return jsonify({
+            'message': '邀请创建成功',
+            'invitation': invitation_json
+        }), 201
+    except ValueError as e:
+        print(f"创建邀请时发生值错误: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        print(f"创建邀请时出错: {e}")
+        return jsonify({'error': f'创建邀请失败: {str(e)}'}), 500
+
+
+@api.route('/trips/sharing/invitations', methods=['GET'])
+def get_sharing_invitations():
+    """获取行程的所有分享邀请"""
+    trip_id = request.args.get('trip_id')
+    if not trip_id:
+        return jsonify({'error': '缺少trip_id参数'}), 400
+    
+    try:
+        from ..models import ShareInvitation
+        invitations = ShareInvitation.get_invitations_by_trip(mongo, trip_id)
+        return jsonify({
+            'invitations': [ShareInvitation.to_json(invitation) for invitation in invitations]
+        })
+    except Exception as e:
+        print(f"获取邀请列表时出错: {e}")
+        return jsonify({'error': f'获取邀请列表失败: {str(e)}'}), 500
+
+
+@api.route('/trips/sharing/invitations/<invitation_code>', methods=['GET'])
+def get_invitation_by_code(invitation_code):
+    """通过邀请码获取邀请详情"""
+    try:
+        from ..models import ShareInvitation
+        invitation = ShareInvitation.get_invitation_by_code(mongo, invitation_code)
+        
+        if not invitation:
+            return jsonify({'error': '邀请不存在或已失效'}), 404
+        
+        # 如果邀请已过期，返回特定消息
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expires_at = invitation.get('expires_at')
+        
+        # 确保expires_at有时区信息
+        if expires_at:
+            if isinstance(expires_at, str):
+                try:
+                    expires_at = datetime.datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                except ValueError:
+                    # 无法解析则假设未过期
+                    expires_at = now + datetime.timedelta(days=1)
+            
+            # 确保时区信息存在
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+                
+            if expires_at < now:
+                return jsonify({'error': '邀请已过期', 'invitation': ShareInvitation.to_json(invitation)}), 410
+        
+        # 如果邀请已经接受或拒绝
+        if invitation.get('status') != 'pending':
+            status_message = '已接受' if invitation.get('status') == 'accepted' else '已拒绝'
+            return jsonify({'message': f'邀请{status_message}', 'invitation': ShareInvitation.to_json(invitation)})
+        
+        # 获取行程信息，用于显示
+        from ..models import UserTrip
+        trip = UserTrip.get_user_trip_by_id(mongo, invitation['trip_id'])
+        trip_info = {
+            'id': str(trip['_id']),
+            'name': trip.get('userTripNameOverride') or trip.get('displayName') or '未命名行程',
+            'creator_name': None
+        }
+        
+        # 尝试获取创建者信息
+        for member in trip.get('members', []):
+            if member.get('userId') == trip.get('creator_id'):
+                trip_info['creator_name'] = member.get('name')
+                break
+        
+        invitation_json = ShareInvitation.to_json(invitation)
+        invitation_json['trip_info'] = trip_info
+        
+        return jsonify({'invitation': invitation_json})
+    except Exception as e:
+        print(f"获取邀请详情时出错: {e}")
+        return jsonify({'error': f'获取邀请详情失败: {str(e)}'}), 500
+
+
+@api.route('/trips/sharing/invitations/<invitation_code>/accept', methods=['POST'])
+def accept_sharing_invitation(invitation_code):
+    """接受分享邀请"""
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    user_name = data.get('user_name')
+    avatar_url = data.get('avatar_url')
+    
+    if not user_id or not user_name:
+        return jsonify({'error': '缺少用户信息'}), 400
+    
+    try:
+        from ..models import ShareInvitation
+        success, message = ShareInvitation.accept_invitation(
+            mongo, invitation_code, user_id, user_name, avatar_url)
+        
+        if success:
+            return jsonify({'message': message})
+        else:
+            return jsonify({'error': message}), 400
+    except Exception as e:
+        print(f"接受邀请时出错: {e}")
+        return jsonify({'error': f'接受邀请失败: {str(e)}'}), 500
+
+
+@api.route('/trips/sharing/invitations/<invitation_code>/reject', methods=['POST'])
+def reject_sharing_invitation(invitation_code):
+    """拒绝分享邀请"""
+    try:
+        from ..models import ShareInvitation
+        success = ShareInvitation.reject_invitation(mongo, invitation_code)
+        
+        if success:
+            return jsonify({'message': '已拒绝邀请'})
+        else:
+            return jsonify({'error': '邀请不存在或已失效'}), 404
+    except Exception as e:
+        print(f"拒绝邀请时出错: {e}")
+        return jsonify({'error': f'拒绝邀请失败: {str(e)}'}), 500
+
+
+@api.route('/trips/sharing/invitations/<invitation_id>', methods=['DELETE'])
+def cancel_sharing_invitation(invitation_id):
+    """取消（删除）分享邀请"""
+    try:
+        from ..models import ShareInvitation
+        success = ShareInvitation.delete_invitation(mongo, invitation_id)
+        
+        if success:
+            return jsonify({'message': '邀请已取消'})
+        else:
+            return jsonify({'error': '邀请不存在或已删除'}), 404
+    except Exception as e:
+        print(f"取消邀请时出错: {e}")
+        return jsonify({'error': f'取消邀请失败: {str(e)}'}), 500

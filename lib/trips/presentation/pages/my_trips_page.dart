@@ -11,6 +11,7 @@ import '../../../core/models/api_user_trip_model.dart';
 import 'package:tulele/market/presentation/pages/solution_market_page.dart';
 import '../../../market/presentation/pages/plan_details_page.dart';
 import 'trip_detail_page.dart';
+import 'qr_scanner_page.dart';
 
 class TravelPlanMarketItem {
   final String id;
@@ -233,6 +234,20 @@ class _MyTripsPageState extends State<MyTripsPage> {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
+          actions: [
+            // 添加扫码按钮到右上角
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner),
+              tooltip: '扫描邀请二维码',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const QrScannerPage()),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
         body: RefreshIndicator(
           onRefresh: _loadData,

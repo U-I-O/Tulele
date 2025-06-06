@@ -45,9 +45,13 @@ dependencies:
   fl_chart: ^1.0.0
   http: ^1.1.0
   flutter_dotenv: ^5.1.0
-  uuid: ^3.0.7
+  uuid: ^4.5.1
   intl: ^0.20.2
   get_it: ^7.6.7
+  path_provider: ^2.1.5
+  qr_flutter: ^4.1.0
+  share_plus: ^11.0.0
+  mobile_scanner: ^4.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/services/user_service.dart';
@@ -48,7 +49,28 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (mounted) {
-        Navigator.of(context).pop(true); // 返回并标记登录成功
+        // 检查是否有待处理的邀请码
+        final prefs = await SharedPreferences.getInstance();
+        final pendingInvitationCode = prefs.getString('pending_invitation_code');
+        
+        if (pendingInvitationCode != null) {
+          // 清除邀请码
+          await prefs.remove('pending_invitation_code');
+          
+          // 显示处理邀请的提示
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录成功，正在处理邀请...'))
+          );
+          
+          // 返回登录成功并携带邀请码
+          Navigator.of(context).pop({
+            'success': true,
+            'pendingInvitationCode': pendingInvitationCode,
+          });
+        } else {
+          // 正常返回登录成功
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       if (mounted) {

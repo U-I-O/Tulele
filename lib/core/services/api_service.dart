@@ -8,7 +8,16 @@ import '../models/api_user_trip_model.dart'; // 确保 ApiTicket 等嵌套模型
 class ApiService {
   // final String _baseUrl = "http://127.0.0.1:5000/api"; // 开发时用
   // final String _baseUrl = "http://localhost:5000/api"; // 或者你的实际部署地址
+  // final String _baseUrl = "http://192.168.137.214:5000/api"; // 生产环境
   final String _baseUrl = "http://192.168.75.89:5000/api"; // 生产环境
+
+  /// 获取用于分享的基础URL
+  String getBaseUrl() {
+    // 提取API URL中的域名部分，去掉"/api"路径
+    // 生产环境应该返回您实际部署的域名，例如 "https://yourapp.com"
+    String url = _baseUrl.replaceAll('/api', '');
+    return url;
+  }
 
   Future<Map<String, String>> _getHeaders() async {
     String? token = await AuthUtils.getAccessToken();
@@ -484,23 +493,173 @@ class ApiService {
   }
    // TODO: Add methods for notes, feeds, etc., as needed.
   
-  // --- User Authentication Endpoints ---
-
-  /// 获取当前登录用户信息
-  Future<Map<String, dynamic>> getCurrentUser() async {
+  // --- Trip Sharing Endpoints ---
+  
+  /// 创建行程分享邀请
+  Future<Map<String, dynamic>> createTripShareInvitation(
+    String tripId, 
+    Map<String, dynamic> invitationData
+  ) async {
     final headers = await _getHeaders();
-    
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/users/me'), headers: headers);
+      // 确保trip_id字段存在
+      if (!invitationData.containsKey('trip_id')) {
+        invitationData['trip_id'] = tripId;
+      }
       
-      if (response.statusCode == 200) {
-        return json.decode(utf8.decode(response.bodyBytes));
+      final String requestBody = json.encode(invitationData);
+      print('创建邀请请求体: $requestBody'); // 调试信息
+      
+      final response = await http.post(
+        Uri.parse('$_baseUrl/trips/sharing/invitations'),
+        headers: headers,
+        body: requestBody,
+      );
+      
+      print('邀请API响应码: ${response.statusCode}'); // 调试信息
+      print('邀请API响应体: ${utf8.decode(response.bodyBytes)}'); // 调试信息
+      
+      if (response.statusCode == 201) {
+        final Map<String, dynamic> decodedJson = json.decode(utf8.decode(response.bodyBytes));
+        if (decodedJson.containsKey('invitation')) {
+          return decodedJson['invitation'] as Map<String, dynamic>;
+        } else {
+          throw Exception('Missing invitation data in response');
+        }
       } else {
-        throw Exception('Failed to get current user: ${response.statusCode}');
+        throw Exception('Failed to create invitation (${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
       }
     } catch (e) {
-      print('Error getting current user: $e');
-      throw Exception('Error getting current user: $e');
+      print('Error creating trip invitation: $e');
+      throw Exception('Error creating trip invitation: $e');
+    }
+  }
+  
+  /// 获取行程所有分享邀请
+  Future<List<Map<String, dynamic>>> getTripInvitations(String tripId) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/trips/sharing/invitations?trip_id=$tripId'),
+        headers: headers,
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> decodedJson = json.decode(utf8.decode(response.bodyBytes));
+        if (decodedJson.containsKey('invitations') && decodedJson['invitations'] is List) {
+          return (decodedJson['invitations'] as List)
+              .cast<Map<String, dynamic>>();
+        } else {
+          return [];
+        }
+      } else {
+        throw Exception('Failed to get invitations (${response.statusCode})');
+      }
+    } catch (e) {
+      print('Error getting trip invitations: $e');
+      throw Exception('Error getting trip invitations: $e');
+    }
+  }
+  
+  /// 通过邀请码获取邀请详情
+  Future<Map<String, dynamic>> getInvitationByCode(String invitationCode) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/trips/sharing/invitations/$invitationCode'),
+        headers: headers,
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> decodedJson = json.decode(utf8.decode(response.bodyBytes));
+        if (decodedJson.containsKey('invitation')) {
+          return decodedJson['invitation'] as Map<String, dynamic>;
+        } else {
+          throw Exception('Missing invitation data in response');
+        }
+      } else {
+        throw Exception('Failed to get invitation (${response.statusCode})');
+      }
+    } catch (e) {
+      print('Error getting invitation: $e');
+      throw Exception('Error getting invitation: $e');
+    }
+  }
+  
+  /// 接受行程邀请
+  Future<bool> acceptInvitation(String invitationCode, Map<String, dynamic> userData) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/trips/sharing/invitations/$invitationCode/accept'),
+        headers: headers,
+        body: json.encode(userData),
+      );
+      
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error accepting invitation: $e');
+      throw Exception('Error accepting invitation: $e');
+    }
+  }
+  
+  /// 拒绝行程邀请
+  Future<bool> rejectInvitation(String invitationCode) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/trips/sharing/invitations/$invitationCode/reject'),
+        headers: headers,
+      );
+      
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error rejecting invitation: $e');
+      throw Exception('Error rejecting invitation: $e');
+    }
+  }
+  
+  /// 取消行程邀请
+  Future<bool> cancelInvitation(String tripId, String invitationId) async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/trips/sharing/invitations/$invitationId'),
+        headers: headers,
+      );
+      
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print('Error cancelling invitation: $e');
+      throw Exception('Error cancelling invitation: $e');
+    }
+  }
+  
+  // --- User Authentication & Profile Endpoints ---
+  
+  /// 获取当前登录用户的信息
+  Future<Map<String, dynamic>> getCurrentUserInfo() async {
+    final headers = await _getHeaders();
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/me'),
+        headers: headers,
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> decodedJson = json.decode(utf8.decode(response.bodyBytes));
+        if (decodedJson.containsKey('user')) {
+          return decodedJson['user'] as Map<String, dynamic>;
+        } else {
+          // 如果响应不包含user字段，但是格式正确，可能直接返回了用户对象
+          return decodedJson;
+        }
+      } else {
+        throw Exception('Failed to get current user info (${response.statusCode})');
+      }
+    } catch (e) {
+      print('Error getting current user info: $e');
+      throw Exception('Error getting current user info: $e');
     }
   }
 

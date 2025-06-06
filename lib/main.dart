@@ -8,6 +8,9 @@ import 'package:tulele/trips/presentation/pages/my_trips_page.dart';
 import 'package:tulele/profile/presentation/pages/profile_page.dart';
 import 'package:tulele/ai/presentation/pages/ai_planner_page.dart';
 import 'package:tulele/trips/presentation/pages/create_trip_details_page.dart';
+import 'package:tulele/trips/presentation/pages/trip_invitation_page.dart';
+// 导入QR码扫描页面
+import 'package:tulele/trips/presentation/pages/qr_scanner_page.dart';
 
 // 导入 flutter_local_notifications
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -248,6 +251,19 @@ class MyAppEntry extends StatelessWidget {
       ],
       locale: const Locale('zh', 'CN'),
       home: const MainPageNavigator(),
+      // 添加路由处理
+      onGenerateRoute: (settings) {
+        // 处理邀请链接
+        if (settings.name != null && settings.name!.startsWith('/invite/')) {
+          // 提取邀请码
+          final invitationCode = settings.name!.replaceFirst('/invite/', '');
+          // 导入邀请处理页面
+          return MaterialPageRoute(
+            builder: (context) => TripInvitationPage(invitationCode: invitationCode),
+          );
+        }
+        return null;
+      },
       debugShowCheckedModeBanner: false,
     );
   }
@@ -460,6 +476,46 @@ class _MainPageNavigatorState extends State<MainPageNavigator> {
           ),
         ),
       ],
+    );
+  }
+
+  // 扫描二维码按钮
+  Widget _buildScannerButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        // 导航到扫码页面
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const QrScannerPage()),
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.qr_code_scanner,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            '扫码',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

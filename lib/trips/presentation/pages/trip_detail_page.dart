@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For ImageFilter
 import 'dart:math'; // For random ID generation - 现在活动ID由后端处理或用时间戳做临时ID
+import 'package:qr_flutter/qr_flutter.dart'; // 添加二维码生成库
+import 'package:share_plus/share_plus.dart'; // 添加分享功能库
+import 'package:flutter/services.dart'; // 用于复制到剪贴板
 
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 确保已配置
@@ -12,6 +15,9 @@ import '../../../core/services/api_service.dart';
 import '../../../core/models/api_user_trip_model.dart';
 import '../../../core/models/api_trip_plan_model.dart';
 import '../../../core/enums/trip_enums.dart';
+
+// 新增：行程分享服务
+import '../../services/trip_sharing_service.dart';
 
 // Widgets
 import '../widgets/activity_card_widget.dart';
@@ -35,6 +41,9 @@ class TripDetailPage extends StatefulWidget {
 
 class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStateMixin {
   final ApiService _apiService = ApiService();
+  // 新增：行程分享服务
+  late final TripSharingService _sharingService = TripSharingService(apiService: _apiService);
+  
   ApiUserTrip? _userTripData;
   bool _isLoading = true;
   String? _loadingError;
@@ -629,6 +638,344 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     );
   }
 
+  // 在_buildAppBar方法之前添加分享功能相关方法
+  void _showShareOptions() {
+    if (_userTripData == null) return;
+    
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _buildShareOptionsSheet(),
+    );
+  }
+  
+  Widget _buildShareOptionsSheet() {
+    String tripName = _userTripData?.displayName ?? '行程计划';
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '团队编辑与分享',
+            style: Theme.of(context).textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          // 添加团队编辑专区
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.group, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      '邀请好友一起编辑',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person_add, color: Theme.of(context).primaryColor),
+                  ),
+                  title: const Text('邀请成员'),
+                  subtitle: const Text('让朋友加入并一起编辑行程'),
+                  trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Theme.of(context).primaryColor),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToMemberInvitePage();
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          Text(
+            '分享方式',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildShareOption(
+                icon: Icons.qr_code,
+                label: '二维码分享',
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareWithQrCode();
+                },
+              ),
+              _buildShareOption(
+                icon: Icons.link,
+                label: '复制链接',
+                onTap: () {
+                  _copyShareLink();
+                  Navigator.pop(context);
+                },
+              ),
+              _buildShareOption(
+                icon: Icons.share,
+                label: '系统分享',
+                onTap: () {
+                  _shareWithSystemShare();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // 使用服务分享行程
+  Future<void> _shareWithSystemShare() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在准备分享链接...')));
+    
+    try {
+      await _sharingService.shareLink(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '分享失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '分享失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '分享失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  // 使用服务复制行程分享链接
+  Future<void> _copyShareLink() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在生成链接...')));
+    
+    try {
+      await _sharingService.copyShareLink(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '复制链接失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '复制链接失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '复制链接失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  // 使用服务生成和分享二维码
+  Future<void> _shareWithQrCode() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在生成二维码...')));
+    
+    try {
+      await _sharingService.shareQrCode(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '生成二维码失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '生成二维码失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '生成二维码失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  void _navigateToMemberInvitePage() {
+    if (_userTripData == null) return;
+    
+    // 显示临时邀请对话框，直到成员邀请页面开发完成
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('邀请成员加入'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('邀请好友一起编辑"${_userTripData!.displayName}"行程'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.link),
+                    label: const Text('复制邀请链接'),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _copyShareLink();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.qr_code),
+                    label: const Text('生成邀请二维码'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _shareWithQrCode();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '注意: 被邀请的成员将获得编辑该行程的权限',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 保留原有的_buildShareOption方法
+  Widget _buildShareOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              size: 32,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
+  // 修改_buildAppBar方法，添加分享按钮
+  AppBar _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      leading: BackButton(color: Colors.white),
+      actions: [
+        // 添加分享按钮
+        IconButton(
+          icon: const Icon(Icons.share, color: Colors.white),
+          onPressed: _showShareOptions,
+        ),
+        IconButton(
+          icon: Icon(_currentMode == TripMode.edit ? 
+                    Icons.check : 
+                    _currentMode == TripMode.travel ? 
+                      Icons.edit_location_alt : Icons.edit,
+            color: Colors.white),
+          onPressed: _currentMode == TripMode.edit ? _saveChanges : _toggleEditMode,
+        ),
+        PopupMenuButton(
+          icon: Icon(Icons.more_vert, color: Colors.white),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('删除行程'),
+                ],
+              ),
+            ),
+          ],
+          onSelected: (value) {
+            if (value == 'delete') _confirmDeleteTrip();
+          },
+        ),
+      ],
+      elevation: 0,
+      // Rest of the AppBar properties remain the same
+    );
+  }
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
     if (_userTripData == null) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
@@ -859,7 +1206,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             _updateEditableControllers(_userTripData!); // 进入编辑模式前，用当前数据填充控制器
             setState(() { _currentMode = TripMode.edit; });
           })),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          Expanded(child: _buildStyledButton(context, label: '团队编辑', icon: Icons.group_add, onPressed: _showShareOptions)),
+          const SizedBox(width: 8),
           Expanded(child: _buildStyledButton(context, label: '开始旅行', icon: Icons.navigation_outlined, onPressed: () async {
             if(_userTripData == null || !mounted) return;
             final originalStatus = _userTripData!.travelStatus;
@@ -1322,6 +1671,73 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }
   }
 
+  // 添加切换编辑模式的方法
+  void _toggleEditMode() {
+    // 如果当前处于查看模式，则切换到编辑模式
+    if (_currentMode == TripMode.view || _currentMode == TripMode.travel) {
+      setState(() {
+        _currentMode = TripMode.edit;
+      });
+    }
+    // 如果当前处于编辑模式，则在保存后会自动切换到查看模式
+  }
+  
+  // 删除行程确认对话框
+  void _confirmDeleteTrip() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除此行程吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteTrip();
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 执行删除行程操作
+  Future<void> _deleteTrip() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在删除...')));
+    
+    try {
+      final success = await _apiService.deleteUserTrip(widget.userTripId);
+      if (!mounted) return;
+      
+      if (success) {
+        messenger.showSnackBar(const SnackBar(content: Text('行程已删除')));
+        // 导航回上一页
+        Navigator.pop(context);
+      } else {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('删除失败，请重试'),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('删除失败: ${e.toString()}'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
