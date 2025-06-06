@@ -255,16 +255,8 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
   void _updateMarkersAndRoutes() async {
     if (_mapController == null || !mounted) return;
 
-    // 清除现有标记
-    await _mapController!.cleanAllMarkers();
-    _markers.clear();
-    
-    // 清除所有路线和覆盖物
-    // await _mapController?.clearOverlays();
-    /// 添加路线polyline
-    if (_polyline != null) {
-      _mapController!.removeOverlay(_polyline!.id);
-    }
+    clearAllMarkers();
+    clearAllPolylines();
     
     // 检查是否有活动
     if (widget.activities.isEmpty) {
@@ -293,24 +285,19 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
       validPoints.add(position);
       validActivities.add(activity);
       
-      // 使用BMFMarker.icon()代替弃用的构造方法
-      BMFMarker marker = BMFMarker.icon(
+      // 选择图标
+      String icon = 'resources/icon_mark.png';
+
+      // 添加标记点
+      await addMarkerToMap(
         position: position,
-        title: activity.title,
+        title: activity.title ,
         subtitle: "${activity.startTime ?? ''} - ${activity.endTime ?? ''}",
         identifier: activity.id ?? 'marker_$i',
-        icon: 'resources/icon_mark.png',
-        enabled: true,
+        icon: icon,
       );
-
       debugPrint('当前添加的点坐标: ${position.latitude}, ${position.longitude}');
-      debugPrint('当前活动: ${activity.title}');
-      
-      // 添加标记到地图
-      bool result = await _mapController!.addMarker(marker);
-      if (result) {
-        _markers.add(marker);
-      }
+      debugPrint('当前活动: ${activity.title}');      
     }
     
     // 如果有多个有效点，绘制简单路线
@@ -335,13 +322,9 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
   Future<void> _planTransitRoute(List<ApiActivityFromUserTrip> activities) async {
     if (_transitRouteSearch == null || _reverseGeoSearch == null || activities.length < 2) return;
     
+
     debugPrint('=== 路线规划开始: ${activities.length}个活动点 ===');
-    
-    // 清除已有路线
-    if (_polyline != null) {
-      _mapController!.removeOverlay(_polyline!.id);
-    }
-    
+
     // 尝试为每对相邻活动规划路线
     for (int i = 0; i < activities.length - 1; i++) {
       final startActivity = activities[i];
@@ -502,19 +485,13 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     if (_mapController == null || points.length < 2) return;
     
     try {
-      // 使用普通线条，不使用动画
-      _polyline = BMFPolyline(
+      await addPolylineToMap(
+        points: points,
         width: 8,
-        coordinates: points,
-        indexs: [0],  // 使用单一索引绘制整条路径
-        colors: [Colors.blue],
-        lineDashType: BMFLineDashType.LineDashTypeNone,
-        lineJoinType: BMFLineJoinType.LineJoinRound,
-        lineCapType: BMFLineCapType.LineCapRound,
-      );
-      
-      bool result = await _mapController!.addPolyline(_polyline!);
-      debugPrint('添加高效版路线: ${result ? "成功" : "失败"}');
+        color: Colors.blue, // 或其他颜色
+        texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+        updateView: true,
+      );  
       
       // 设置地图视图范围
       if (points.length >= 2) {
@@ -548,13 +525,13 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
       
       // 简单错误处理
       try {
-        final simplePolyline = BMFPolyline(
-          coordinates: points,
-          width: 5,
-          indexs: List.generate(points.length, (index) => index),
-          colors: [Colors.red],
+        await addPolylineToMap(
+          points: points,
+          width: 8,
+          color: Colors.blue, // 或其他颜色
+          texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+          updateView: true,
         );
-        await _mapController!.addPolyline(simplePolyline);
       } catch (e2) {
         debugPrint('备用路线绘制也失败: $e2');
       }
@@ -623,29 +600,18 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     if (points.length < 2) return;
     
     try {
-      // 如果已有路线，移除它
-      if (_polyline != null) {
-        await _mapController!.removeOverlay(_polyline!.id);
-      }
-      
-      // 使用普通线条，不使用动画，优先尝试纹理
-      _polyline = BMFPolyline(
-        width: 8,
-        coordinates: points,
-        indexs: [0],  // 使用单一索引绘制整条路径
-        colors: [Colors.blue],
-        lineDashType: BMFLineDashType.LineDashTypeNone,
-        lineJoinType: BMFLineJoinType.LineJoinRound,
-        lineCapType: BMFLineCapType.LineCapRound,
-      );     
-      bool result = await _mapController!.addPolyline(_polyline!);
-      debugPrint('添加纹理路线: ${result ? "成功" : "失败"}');
+      await addPolylineToMap(
+          points: points,
+          width: 8,
+          color: Colors.blue, // 或其他颜色
+          texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+          updateView: true,
+        );
       
       // 设置地图显示范围
       _adjustMapViewToShowAllMarkers(points);
     } catch (e) {
-      debugPrint('纹理路线绘制出错: $e');
-      
+      debugPrint('纹理路线绘制出错: $e');      
       // 简单错误处理 - 使用普通线条
       _addSimpleRoute(points);
     }
@@ -655,16 +621,14 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     debugPrint('绘制直线连接');
     
     try {
-      final polyline = BMFPolyline(
-        width: 6,
-        coordinates: [start, end],
-        indexs: [0, 1],
-        colors: [Colors.orange],
-        lineDashType: BMFLineDashType.LineDashTypeNone,
-      );
-      
-      await _mapController!.addPolyline(polyline);
-      
+      await addPolylineToMap(
+          points: [start, end],
+          width: 6,
+          color: Colors.orange, // 或其他颜色
+          texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+          updateView: true,
+        );
+    
       // 调整地图视图
       final bounds = BMFCoordinateBounds(
         northeast: BMFCoordinate(
@@ -683,69 +647,6 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     }
   }
   // =============================================
-
-  // 绘制跨城路线 - 处理嵌套结构
-  void _drawMassTransitRoute(BMFMassTransitRouteResult result) async {
-    debugPrint('开始绘制跨城路线');
-    if (_mapController == null || !mounted) return;
-    
-    // 获取路线方案
-    final routes = result.routes;
-    if (routes == null || routes.isEmpty) {
-      debugPrint('绘制跨城路线失败: 没有可用的路线方案');
-      return;
-    }
-    
-    debugPrint('使用第一种方案, 总共${routes.length}种方案');
-    
-    try {
-      // 使用第一种方案
-      final route = routes.first;
-      
-      // 收集所有路线点用于简单连线
-      List<BMFCoordinate> allPoints = [];
-      
-      debugPrint('大段路线数量: ${route.steps?.length ?? 0}');
-      
-      // 处理每个大段路线
-      for (final massTransitStep in route.steps ?? []) {
-        debugPrint('子路段数量: ${massTransitStep.steps?.length ?? 0}');
-        
-        // 尝试收集所有可用的点
-        for (final subStep in massTransitStep.steps ?? []) {
-          if (subStep.points != null && subStep.points!.isNotEmpty) {
-            allPoints.addAll(subStep.points!);
-            debugPrint('添加子路段点: ${subStep.points!.length}个');
-          }
-        }
-      }
-      
-      // 确保至少有两个点用于绘制线路
-      if (allPoints.length >= 2) {
-        debugPrint('使用简单动画线路绘制，共${allPoints.length}个点');
-        await _addSimpleRoute(allPoints);
-      } else {
-        debugPrint('没有足够的点来绘制路线');
-      }
-    } catch (e) {
-      debugPrint('绘制跨城路线出错: $e');
-      
-      // 如果出错，尝试获取起点和终点
-      if (result.routes != null && 
-          result.routes!.isNotEmpty && 
-          result.routes!.first.starting?.location != null && 
-          result.routes!.first.terminal?.location != null) {
-        debugPrint('退回到简单起终点连线');
-        await _addSimpleRoute([
-          result.routes!.first.starting!.location!, 
-          result.routes!.first.terminal!.location!
-        ]);
-      }
-    }
-    
-    debugPrint('绘制跨城路线完成');
-  }
-  
   // 使用简单线路绘制连接坐标点，不使用动画
   Future<void> _addSimpleRoute(List<BMFCoordinate> points) async {
     debugPrint('开始添加普通线路, 点数量: ${points.length}');
@@ -764,59 +665,43 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
       // 如果点数较多，分段绘制以实现不同颜色效果
       if (points.length > 10) {
         // 将路线分为多段，每段使用不同颜色
-        int segmentSize = points.length ~/ 4;  // 大致分为4段
-        
+        int segmentSize = points.length ~/ 4;  // 大致分为4段        
         for (int i = 0; i < 4; i++) {
           int startIdx = i * segmentSize;
-          int endIdx = (i == 3) ? points.length : (i + 1) * segmentSize;
-          
-          if (endIdx <= startIdx + 1) continue; // 至少需要2个点
-          
-          List<BMFCoordinate> segmentPoints = points.sublist(startIdx, endIdx);
-          
-          // 创建折线段
-          final overlay = BMFPolyline(
-            coordinates: segmentPoints,
+          int endIdx = (i == 3) ? points.length : (i + 1) * segmentSize;          
+          if (endIdx <= startIdx + 1) continue; // 至少需要2个点          
+          List<BMFCoordinate> segmentPoints = points.sublist(startIdx, endIdx);        
+          // 直接使用新函数添加路线
+          await addPolylineToMap(
+            points: segmentPoints,
             width: 6,
-            indexs: List.generate(segmentPoints.length, (index) => index),
-            colors: [colors[i], colors[(i + 1) % 4]], // 使用渐变色
-            lineDashType: BMFLineDashType.LineDashTypeNone,
-            lineJoinType: BMFLineJoinType.LineJoinRound,
-            lineCapType: BMFLineCapType.LineCapRound,
+            color: colors[i], // 或其他颜色
+            texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+            updateView: true,
           );
-          
-          bool result = await _mapController!.addPolyline(overlay);
-          debugPrint('添加线段${i+1}/4: ${result ? "成功" : "失败"}');
       }
     } else {
-        // 点数较少时直接创建单一折线
-        final overlay = BMFPolyline(
-          coordinates: points,
-          width: 6,
-          indexs: List.generate(points.length, (index) => index),
-          colors: colors,  // 使用多色渐变
-          lineDashType: BMFLineDashType.LineDashTypeNone,
-          lineJoinType: BMFLineJoinType.LineJoinRound,
-          lineCapType: BMFLineCapType.LineCapRound,
-        );
-        
-        bool result = await _mapController!.addPolyline(overlay);
-        debugPrint('添加普通线路: ${result ? "成功" : "失败"}');
+       await addPolylineToMap(
+            points: points,
+            width: 6,
+            color: colors[0], // 或其他颜色
+            texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+            updateView: true,
+          );
       }
     } catch (e) {
       debugPrint('添加普通线路出错: $e');
       
       // 如果出错，尝试使用最简单的直线连接
       try {
-        final simpleOverlay = BMFPolyline(
-          coordinates: [points.first, points.last],
+
+        await addPolylineToMap(
+          points: [points.first, points.last],
           width: 5,
-          indexs: [0, 1],
-          colors: [Colors.red],
-          lineDashType: BMFLineDashType.LineDashTypeNone,
+          color: Colors.red, // 或其他颜色
+          texturePath: "resources/traffic_texture_smooth.png", // 如果需要纹理
+          updateView: true,
         );
-        
-        await _mapController!.addPolyline(simpleOverlay);
         debugPrint('退化为简单直线连接');
       } catch (e2) {
         debugPrint('简单直线连接也失败: $e2');
@@ -868,6 +753,161 @@ class _EnhancedMapViewWidgetState extends State<EnhancedMapViewWidget> {
     }
     
     debugPrint('地图视图调整完成');
+  }
+
+  // ================================== 管理路线和标记工具类 ==================
+  /// 管理路线和标记工具类 - 添加标记点到地图
+  Future<BMFMarker?> addMarkerToMap({
+    required BMFCoordinate position,
+    required String title,
+    String? subtitle,
+    String? identifier,
+    String icon = 'resources/icon_mark.png',
+    bool updateView = false,
+  }) async {
+    if (_mapController == null) return null;
+    
+    debugPrint('添加标记点: $title at (${position.latitude}, ${position.longitude})');
+    
+    // 创建标记
+    BMFMarker marker = BMFMarker.icon(
+      position: position,
+      title: title,
+      subtitle: subtitle,
+      identifier: identifier ?? 'marker_${_markers.length}',
+      icon: icon,
+      enabled: true,
+    );
+    
+    // 添加到地图
+    bool result = await _mapController!.addMarker(marker);
+    if (result) {
+      _markers.add(marker);
+      debugPrint('标记点添加成功: ${marker.identifier}');
+      
+      // 如果需要，更新地图视图
+      if (updateView) {
+        await _adjustMapViewToShowAllMarkers([marker.position]);
+      }
+      
+      return marker;
+    } else {
+      debugPrint('标记点添加失败');
+      return null;
+    }
+  }
+
+  /// 添加路线到地图
+  Future<BMFPolyline?> addPolylineToMap({
+    required List<BMFCoordinate> points,
+    double width = 8,
+    Color color = Colors.blue,
+    String? texturePath,
+    bool updateView = false,
+  }) async {
+    if (_mapController == null || points.length < 2) return null;
+    
+    debugPrint('添加路线, 点数量: ${points.length}');
+    
+    try {
+
+      // 创建路线
+      if (texturePath != null && texturePath.isNotEmpty) {
+        // 使用纹理路线
+        _polyline = BMFPolyline(
+          width: width.toInt(),
+          coordinates: points,
+          indexs: [0],  // 使用单一索引绘制整条路径
+          textures: [texturePath],
+          dottedLine: false,
+        );
+      } else {
+        // 使用颜色路线
+        _polyline = BMFPolyline(
+          width: width.toInt(),
+          coordinates: points,
+          indexs: [0],  // 使用单一索引
+          colors: [color],
+          lineDashType: BMFLineDashType.LineDashTypeNone,
+          lineJoinType: BMFLineJoinType.LineJoinRound,
+          lineCapType: BMFLineCapType.LineCapRound,
+        );
+      }
+      
+      // 添加到地图
+      bool result = await _mapController!.addPolyline(_polyline!);
+      if (result) {
+        // 添加到路线数组
+        _polylines.add(_polyline!);
+        debugPrint('路线添加成功');
+        
+        // 如果需要，更新地图视图
+        if (updateView) {
+          await _adjustMapViewToShowAllMarkers(points);
+        }
+        
+        return _polyline;
+      } else {
+        debugPrint('路线添加失败');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('添加路线出错: $e');
+      return null;
+    }
+  }
+
+  /// 清除所有标记点
+  Future<bool> clearAllMarkers() async {
+    if (_mapController == null) return false;
+    
+    try {
+      debugPrint('清除所有标记点: ${_markers.length}个');
+      bool result = await _mapController!.cleanAllMarkers();
+      if (result) {
+        _markers.clear();
+        debugPrint('所有标记点已清除');
+      } else {
+        debugPrint('清除标记点失败');
+      }
+      return result;
+    } catch (e) {
+      debugPrint('清除标记点出错: $e');
+      return false;
+    }
+  }
+
+  /// 清除所有路线
+  Future<bool> clearAllPolylines() async {
+    if (_mapController == null) return false;
+    
+    try {
+      debugPrint('清除所有路线: ${_polylines.length}个');
+      
+      // 清除单路线对象
+      if (_polyline != null) {
+        await _mapController!.removeOverlay(_polyline!.id);
+        _polyline = null;
+      }
+      
+      // 清除数组中的每条路线
+      bool allRemoved = true;
+      for (var polyline in _polylines) {
+        bool removed = await _mapController!.removeOverlay(polyline.id);
+        if (!removed) {
+          allRemoved = false;
+          debugPrint('移除路线失败: ${polyline.id}');
+        }
+      }
+      
+      // 清空列表
+      _polylines.clear();
+      debugPrint('所有路线已清除');
+      return allRemoved;
+    } catch (e) {
+      debugPrint('清除路线出错: $e');
+      return false;
+    }
   }
 
   @override
