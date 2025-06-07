@@ -44,14 +44,14 @@ class UserService {
         
         // 尝试验证用户令牌是否有效
         try {
-          final userData = await _apiService.getCurrentUser();
+          final userData = await _apiService.getCurrentUserInfo();
           _updateCurrentUser(User.fromBackend(userData['user']));
         } catch (e) {
           // 令牌可能已过期，尝试刷新
           final refreshed = await _apiService.refreshToken();
           if (refreshed) {
             try {
-              final userData = await _apiService.getCurrentUser();
+              final userData = await _apiService.getCurrentUserInfo();
               _updateCurrentUser(User.fromBackend(userData['user']));
             } catch (e) {
               // 刷新失败，清除本地用户

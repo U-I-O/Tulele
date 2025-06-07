@@ -65,6 +65,9 @@ dependencies:
   # 搜索模块 (用于POI搜索)
   flutter_baidu_mapapi_search: ^3.9.3
 
+  qr_flutter: ^4.1.0
+  share_plus: ^11.0.0
+  mobile_scanner: ^4.0.0
 
 dev_dependencies:
   flutter_test:

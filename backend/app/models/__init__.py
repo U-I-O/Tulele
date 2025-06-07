@@ -1,4 +1,4 @@
 # 数据模型包初始化
 
-from .user import User
-from .trips import TripPlan, UserTrip 
+from .trips import TripPlan, UserTrip, ShareInvitation
+from .user import User 

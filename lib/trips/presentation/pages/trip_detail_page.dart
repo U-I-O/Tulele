@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For ImageFilter
 import 'dart:math'; // For random ID generation - 现在活动ID由后端处理或用时间戳做临时ID
+import 'package:qr_flutter/qr_flutter.dart'; // 添加二维码生成库
+import 'package:share_plus/share_plus.dart'; // 添加分享功能库
+import 'package:flutter/services.dart'; // 用于复制到剪贴板
 
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 确保已配置
@@ -17,6 +20,9 @@ import '../../../core/services/api_service.dart';
 import '../../../core/models/api_user_trip_model.dart';
 import '../../../core/models/api_trip_plan_model.dart';
 import '../../../core/enums/trip_enums.dart';
+
+// 新增：行程分享服务
+import '../../services/trip_sharing_service.dart';
 
 // Widgets
 import '../widgets/activity_card_widget.dart';
@@ -45,6 +51,9 @@ class TripDetailPage extends StatefulWidget {
 
 class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStateMixin {
   final ApiService _apiService = ApiService();
+  // 新增：行程分享服务
+  late final TripSharingService _sharingService = TripSharingService(apiService: _apiService);
+  
   ApiUserTrip? _userTripData;
   bool _isLoading = true;
   String? _loadingError;
@@ -78,6 +87,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
   List<GlobalKey> _daySectionKeys = [];
   // 用于跟踪每日行程的展开状态，key 是 dayIndex
   Map<int, bool> _isDayExpanded = {};
+
+  // New field to track flashing day index
+  int _flashingDayIndex = -1;
 
   @override
   void initState() {
@@ -304,19 +316,89 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     }
   }
 
-  // *** 新增/保持: _scrollToDay ***
+  // *** Fixed: _scrollToDay with improved and reliable scrolling ***
   void _scrollToDay(int dayIndex) {
-    if (dayIndex >= 0 && dayIndex < _daySectionKeys.length) {
+    if (dayIndex < 0 || dayIndex >= _daySectionKeys.length || !mounted) return;
+    
       final key = _daySectionKeys[dayIndex];
-      if (key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
+    
+    // Update selected day index and ensure expansion
+    setState(() {
+      _selectedDayIndex = dayIndex;
+      _isDayExpanded[dayIndex] = true;
+    });
+
+    // Use a longer delay to ensure state updates are applied completely
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      
+      // Find the context associated with the key
+      final context = key.currentContext;
+      if (context == null) {
+        print('警告: 未找到日期 ${dayIndex + 1} 的视图');
+        return;
+      }
+      
+      // Method 1: Use direct scroll controller positioning
+      try {
+        final RenderBox box = context.findRenderObject() as RenderBox;
+        final position = box.localToGlobal(Offset.zero);
+        
+        // Calculate the current scroll position
+        final double currentScrollOffset = _itineraryScrollController.offset;
+        
+        // Calculate target position - account for top bar, day tabs, and add some padding
+        // This positions the day with some space at the top for better visibility
+        final topPadding = MediaQuery.of(context).padding.top; // Status bar height
+        final appBarHeight = 56.0; // Approximate app bar height
+        final tabsHeight = 120.0; // Approximate height of all headers (date capsule + bottom switcher)
+        final extraPadding = 12.0; // Extra space for comfort
+        
+        // Target position: global position minus fixed headers and current scroll
+        final targetOffset = position.dy - (topPadding + appBarHeight + tabsHeight + extraPadding);
+        
+        print('滚动到第 ${dayIndex + 1} 天: 位置 $targetOffset (从 $currentScrollOffset)');
+        
+        _itineraryScrollController.animateTo(
+          targetOffset,
           duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-          alignment: 0.0, 
+          curve: Curves.easeOutCubic,
+        );
+      } catch (e) {
+        print('方法1滚动失败: $e');
+        
+        // Method 2: Fallback to Scrollable.ensureVisible
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          alignment: 0.0, // Align to top
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
         );
       }
-    }
+      
+      // Visual feedback animation
+      _flashDaySection(dayIndex);
+    });
+  }
+  
+  // New method to provide visual feedback when scrolling to a section
+  void _flashDaySection(int dayIndex) {
+    if (!mounted) return;
+    
+    // This will be used by the _ActivityDaySection to show a highlight animation
+    setState(() {
+      _flashingDayIndex = dayIndex;
+    });
+    
+    // Reset the flashing state after animation completes
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          _flashingDayIndex = -1;
+        });
+      }
+    });
   }
 
   void _addDay() {
@@ -378,7 +460,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         currentDay.activities.add(activityToAdd);
         _isDayExpanded[dayIndex] = true;
       });
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已在本地添加，请点击顶部“保存计划”以同步。')));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('新活动已在本地添加，请点击顶部"保存计划"以同步。')));
     }
   }
 
@@ -401,7 +483,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         day.activities[activityIndex] = result; // 用编辑后的活动替换
       });
       // 提示用户需要保存整个行程
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请点击顶部“保存计划”以同步到服务器。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('活动已在本地更新，请点击顶部"保存计划"以同步到服务器。')));
     }
   }
 
@@ -454,7 +536,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         context: context,
         builder: (BuildContext context) => AlertDialog(
               title: const Text('删除活动'),
-              content: Text('确定要删除活动 “${activity.title}” 吗？'),
+              content: Text('确定要删除活动 " ${activity.title} " 吗？'),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
                 TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除', style: TextStyle(color: Colors.red))),
@@ -553,7 +635,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       }
     });
     // 注意：这个前端状态的改变不会直接保存到后端，除非你有特定API来同步这个状态
-    // 或者，这个状态仅用于UI展示，实际的“完成”可能通过其他方式记录
+    // 或者，这个状态仅用于UI展示，实际的"完成"可能通过其他方式记录
   }
 
   List<ApiTicket> _getTicketsForCurrentDay(DateTime? currentDate) {
@@ -571,6 +653,345 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       }
     }).toList();
   }
+  // 在_buildAppBar方法之前添加分享功能相关方法
+  void _showShareOptions() {
+    if (_userTripData == null) return;
+    
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _buildShareOptionsSheet(),
+    );
+  }
+ Widget _buildShareOptionsSheet() {
+    String tripName = _userTripData?.displayName ?? '行程计划';
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '团队编辑与分享',
+            style: Theme.of(context).textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          // 添加团队编辑专区
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.group, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      '邀请好友一起编辑',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person_add, color: Theme.of(context).primaryColor),
+                  ),
+                  title: const Text('邀请成员'),
+                  subtitle: const Text('让朋友加入并一起编辑行程'),
+                  trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Theme.of(context).primaryColor),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _navigateToMemberInvitePage();
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          Text(
+            '分享方式',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildShareOption(
+                icon: Icons.qr_code,
+                label: '二维码分享',
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareWithQrCode();
+                },
+              ),
+              _buildShareOption(
+                icon: Icons.link,
+                label: '复制链接',
+                onTap: () {
+                  _copyShareLink();
+                  Navigator.pop(context);
+                },
+              ),
+              _buildShareOption(
+                icon: Icons.share,
+                label: '系统分享',
+                onTap: () {
+                  _shareWithSystemShare();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // 使用服务分享行程
+  Future<void> _shareWithSystemShare() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在准备分享链接...')));
+    
+    try {
+      await _sharingService.shareLink(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '分享失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '分享失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '分享失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  // 使用服务复制行程分享链接
+  Future<void> _copyShareLink() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在生成链接...')));
+    
+    try {
+      await _sharingService.copyShareLink(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '复制链接失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '复制链接失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '复制链接失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  // 使用服务生成和分享二维码
+  Future<void> _shareWithQrCode() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在生成二维码...')));
+    
+    try {
+      await _sharingService.shareQrCode(
+        tripId: widget.userTripId,
+        tripName: _userTripData!.displayName,
+        context: context,
+      );
+    } catch (e) {
+      String errorMsg = '生成二维码失败';
+      if (e.toString().contains('用户未登录')) {
+        errorMsg = '生成二维码失败: 登录状态异常，请尝试重新登录';
+      } else {
+        errorMsg = '生成二维码失败: ${e.toString()}';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+  
+  void _navigateToMemberInvitePage() {
+    if (_userTripData == null) return;
+    
+    // 显示临时邀请对话框，直到成员邀请页面开发完成
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('邀请成员加入'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('邀请好友一起编辑"${_userTripData!.displayName}"行程'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.link),
+                    label: const Text('复制邀请链接'),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _copyShareLink();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.qr_code),
+                    label: const Text('生成邀请二维码'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _shareWithQrCode();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '注意: 被邀请的成员将获得编辑该行程的权限',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 保留原有的_buildShareOption方法
+  Widget _buildShareOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              size: 32,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
+  
+  // 修改_buildAppBar方法，添加分享按钮
+  AppBar _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      leading: BackButton(color: Colors.white),
+      actions: [
+        // 添加分享按钮
+        IconButton(
+          icon: const Icon(Icons.share, color: Colors.white),
+          onPressed: _showShareOptions,
+        ),
+        IconButton(
+          icon: Icon(_currentMode == TripMode.edit ? 
+                    Icons.check : 
+                    _currentMode == TripMode.travel ? 
+                      Icons.edit_location_alt : Icons.edit,
+            color: Colors.white),
+          onPressed: _currentMode == TripMode.edit ? _saveChanges : _toggleEditMode,
+        ),
+        PopupMenuButton(
+          icon: Icon(Icons.more_vert, color: Colors.white),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('删除行程'),
+                ],
+              ),
+            ),
+          ],
+          onSelected: (value) {
+            if (value == 'delete') _confirmDeleteTrip();
+          },
+        ),
+      ],
+      elevation: 0,
+      // Rest of the AppBar properties remain the same
+    );
+  }
+
 
   Widget _buildCoverAndTitleSectionWidget(BuildContext context) {
     if (_userTripData == null) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
@@ -722,7 +1143,28 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                       onChanged: (value) { setStateDialog(() { tempDialogCoverUrl = value.isNotEmpty ? value : null; }); },
                     ),
                     if (tempDialogCoverUrl != null && tempDialogCoverUrl!.isNotEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(tempDialogCoverUrl!, height: 80, width: double.infinity, fit: BoxFit.cover, errorBuilder: (c,e,s) => Container(height: 60, color: Colors.grey[200], child: Center(child: Text("图片预览失败", style: TextStyle(color: Colors.red.shade700, fontSize: 12)))),),),),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            tempDialogCoverUrl!,
+                            height: 80,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => Container(
+                              height: 60,
+                              color: Colors.grey[200],
+                              child: Center(
+                                child: Text(
+                                  "图片预览失败",
+                                  style: TextStyle(color: Colors.red.shade700, fontSize: 12)
+                                )
+                              )
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     TextField(controller: _editableOriginController, decoration: const InputDecoration(labelText: "出发地"),),
                     const SizedBox(height: 8),
@@ -740,8 +1182,8 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         });
 
     if (result == true && mounted) {
-      // 用户点击了“应用更改”，本地 _editable 控制器中的值已更新
-      // 实际的保存操作将在用户点击顶部的“保存计划”按钮时通过 _saveChanges() 触发
+      // 用户点击了"应用更改"，本地 _editable 控制器中的值已更新
+      // 实际的保存操作将在用户点击顶部的"保存计划"按钮时通过 _saveChanges() 触发
       setState(() {
         // 你可以决定是否在这里用 _editable 控制器的值更新 _userTripData 的本地显示
         // 或者依赖于 _saveChanges 成功后再通过 _loadUserTripDetails 刷新
@@ -751,7 +1193,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         _userTripData?.destination = _editableDestinationController.text;
         // ... 更新 _userTripData 的其他字段 ...
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更改已在本地应用，请点击“保存计划”进行最终保存。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更改已在本地应用，请点击"保存计划"进行最终保存。')));
     }
   }
 
@@ -795,7 +1237,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
             _updateEditableControllers(_userTripData!); // 进入编辑模式前，用当前数据填充控制器
             setState(() { _currentMode = TripMode.edit; });
           })),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          Expanded(child: _buildStyledButton(context, label: '团队编辑', icon: Icons.group_add, onPressed: _showShareOptions)),
+          const SizedBox(width: 8),
           Expanded(child: _buildStyledButton(context, label: '开始旅行', icon: Icons.navigation_outlined, onPressed: () async {
             if(_userTripData == null || !mounted) return;
             final originalStatus = _userTripData!.travelStatus;
@@ -937,33 +1381,52 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
                   selected: isSelected,
                   onSelected: (selected) {
                     if (selected) {
-                      if(mounted) {
+                      // Always make sure we're in the right view (itinerary)
+                      if (_mainContentPageController.hasClients && _currentMainViewIndex != 0) {
+                        _mainContentPageController.jumpToPage(0);
+                      }
+                      
+                      // First expand the day and update selection state
                         setState(() {
                           _selectedDayIndex = index;
-                          if (!_isDayExpanded[index]!) { // *** 如果未展开则展开 ***
-                            _isDayExpanded[index] = true;
-                          }
+                        _isDayExpanded[index] = true; // Always expand the selected day
+                      });
+                      
+                      // Ensure the day is expanded before scrolling
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        // Use a slight delay to ensure the UI has updated
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (!mounted) return;
+                          _scrollToDay(index);
                         });
-                      }
-                      if (_mainContentPageController.hasClients && _currentMainViewIndex != 0) {
-                          _mainContentPageController.jumpToPage(0);
-                      }
-                      _scrollToDay(index); // *** 滚动到选中的天 ***
+                      });
                     }
                   },
-                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.10),
+                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.15),
+                  avatar: isSelected ? Icon(
+                    Icons.calendar_today_rounded,
+                    size: 16,
+                    color: Theme.of(context).primaryColor,
+                  ) : null,
                   labelStyle: TextStyle(
                     color: isSelected ? Theme.of(context).primaryColor : Colors.grey[700],
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontSize: isSelected ? 14 : 13,
                   ),
                   backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  pressElevation: 0,
+                  elevation: isSelected ? 1 : 0,
+                  pressElevation: 2,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
-                      side: BorderSide(color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.7) : Colors.grey[300]!)
+                      side: BorderSide(
+                        color: isSelected 
+                            ? Theme.of(context).primaryColor 
+                            : Colors.grey[300]!,
+                        width: isSelected ? 1.5 : 1,
+                      )
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
               );
             },
@@ -1009,7 +1472,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Text(
-            _currentMode == TripMode.edit ? '请在上方日期栏点击“添加日期”以开始规划您的行程。' : '此行程当前没有日期安排。',
+            _currentMode == TripMode.edit ? '请在上方日期栏点击"添加日期"以开始规划您的行程。' : '此行程当前没有日期安排。',
             style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             textAlign: TextAlign.center,
           ),
@@ -1017,9 +1480,15 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
       );
     }
 
-    return ListView.builder(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        // Optional: track scroll position to improve sync between tab and content
+        return false;
+      },
+      child: ListView.builder(
       controller: _itineraryScrollController,
       padding: const EdgeInsets.all(16.0),
+        physics: const ClampingScrollPhysics(),  // Better scroll behavior
       itemCount: _userTripData!.days.length,
       itemBuilder: (context, dayIndex) {
         final dayData = _userTripData!.days[dayIndex];
@@ -1032,6 +1501,9 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           onExpansionChanged: (expanded) {
             setState(() {
               _isDayExpanded[dayIndex] = expanded;
+                if (expanded && _selectedDayIndex != dayIndex) {
+                  _selectedDayIndex = dayIndex; // Update selected day when manually expanded
+                }
             });
           },
           onEditActivity: (activity, activityIndex) {
@@ -1042,12 +1514,12 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
           },
           activityUiStatusMap: _activityUiStatus,
           onActivityStatusChange: _handleActivityStatusChange,
-          // *** 新增传递 onDeleteActivity 参数 ***
           onDeleteActivity: (activityToDelete) { 
             _deleteActivity(dayData, activityToDelete);
           },
         );
       },
+      ),
     );
   }
 
@@ -1154,7 +1626,7 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
     return FloatingActionButton(
       key: const ValueKey('collapsedAiButton'),
       onPressed: () {
-        if (mounted) { setState(() { _isAiChatExpanded = true; });}
+        if (mounted) setState(() { _isAiChatExpanded = true; });
         WidgetsBinding.instance.addPostFrameCallback((_) => _aiFocusNode.requestFocus());
       },
       backgroundColor: Theme.of(context).colorScheme.secondary,
@@ -1257,6 +1729,73 @@ class _TripDetailPageState extends State<TripDetailPage> with TickerProviderStat
         ),
       ),
     );
+  }
+  // 添加切换编辑模式的方法
+  void _toggleEditMode() {
+    // 如果当前处于查看模式，则切换到编辑模式
+    if (_currentMode == TripMode.view || _currentMode == TripMode.travel) {
+      setState(() {
+        _currentMode = TripMode.edit;
+      });
+    }
+    // 如果当前处于编辑模式，则在保存后会自动切换到查看模式
+  }
+  
+  // 删除行程确认对话框
+  void _confirmDeleteTrip() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除此行程吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteTrip();
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 执行删除行程操作
+  Future<void> _deleteTrip() async {
+    if (_userTripData == null) return;
+    
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在删除...')));
+    
+    try {
+      final success = await _apiService.deleteUserTrip(widget.userTripId);
+      if (!mounted) return;
+      
+      if (success) {
+        messenger.showSnackBar(const SnackBar(content: Text('行程已删除')));
+        // 导航回上一页
+        Navigator.pop(context);
+      } else {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('删除失败，请重试'),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('删除失败: ${e.toString()}'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
 
   @override
@@ -1396,34 +1935,234 @@ class _ActivityDaySection extends StatelessWidget {
     if (dayData.date != null) {
       dayTitle += ' (${dayData.date!.month}/${dayData.date!.day})';
     }
+
+    // 提取主题或标题
+    String dayTheme = "";
     if (dayData.title != null && dayData.title!.isNotEmpty) {
-      dayTitle += ' - ${dayData.title}';
+      final String title = dayData.title!;
+      if (title.contains("：")) {
+        dayTheme = title.split("：")[1].trim();
+      } else if (title.contains(":")) {
+        dayTheme = title.split(":")[1].trim();
+      } else if (title.contains("-")) {
+        dayTheme = title.split("-")[1].trim();
+      } else {
+        dayTheme = title;
+      }
     }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16.0),
-      elevation: 0.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200, width: 1)
+    // 检查是否为当前选中的天数
+    bool isCurrentSelectedDay = false;
+    bool isFlashing = false;
+    if (context.findAncestorStateOfType<_TripDetailPageState>() != null) {
+      final state = context.findAncestorStateOfType<_TripDetailPageState>()!;
+      isCurrentSelectedDay = state._selectedDayIndex == dayIndex;
+      isFlashing = state._flashingDayIndex == dayIndex;
+    }
+
+    // 根据日期索引生成不同的主题颜色
+    List<Color> dayColors = [
+      Colors.blue.shade700,
+      Colors.teal.shade700,
+      Colors.purple.shade700,
+      Colors.orange.shade700,
+      Colors.green.shade700,
+      Colors.red.shade700,
+    ];
+    
+    final Color dayColor = dayColors[dayIndex % dayColors.length];
+    final Color bgColor = isFlashing 
+        ? dayColor.withOpacity(0.15)
+        : isCurrentSelectedDay 
+            ? dayColor.withOpacity(0.08) 
+            : Colors.white;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isFlashing 
+            ? [BoxShadow(color: dayColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)]
+            : isCurrentSelectedDay 
+                ? [BoxShadow(color: dayColor.withOpacity(0.2), blurRadius: 4, spreadRadius: 1)]
+                : [BoxShadow(color: Colors.grey.shade200, blurRadius: 2)],
       ),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            title: Text(dayTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            trailing: IconButton(
-              icon: Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.grey[700]),
-              onPressed: () => onExpansionChanged(!isExpanded),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 16.0),
+        elevation: 0, // 使用自定义阴影，所以卡片本身无阴影
+        color: bgColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isFlashing 
+                ? dayColor
+                : isCurrentSelectedDay 
+                    ? dayColor.withOpacity(0.5) 
+                    : Colors.grey.shade200, 
+            width: isFlashing ? 2.0 : isCurrentSelectedDay ? 1.5 : 1
+          )
+        ),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () {
+                onExpansionChanged(!isExpanded);
+                
+                // Update the selected day in the parent state
+                if (context.findAncestorStateOfType<_TripDetailPageState>() != null) {
+                  final state = context.findAncestorStateOfType<_TripDetailPageState>()!;
+                  state.setState(() {
+                    state._selectedDayIndex = dayIndex;
+                  });
+                  // Trigger scroll to this day
+                  state._scrollToDay(dayIndex);
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isFlashing 
+                      ? dayColor.withOpacity(0.2)
+                      : isCurrentSelectedDay 
+                          ? dayColor.withOpacity(0.1) 
+                          : dayColor.withOpacity(0.05),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                  child: Row(
+                    children: [
+                      // 左侧竖条标记
+                      Container(
+                        width: 4,
+                        height: 28,
+                        margin: EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          color: dayColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      
+                      // 日期和主题
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 日期显示
+                            Text(
+                              dayTitle, 
+                              style: TextStyle(
+                                fontSize: 16, 
+                                fontWeight: FontWeight.bold,
+                                color: isFlashing 
+                                    ? dayColor
+                                    : isCurrentSelectedDay 
+                                        ? dayColor
+                                        : dayColor
+                              )
+                            ),
+                            // 主题显示（如果有）
+                            if (dayTheme.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  dayTheme,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      
+                      // 右侧控件
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 当前选择标记
+                          if (isCurrentSelectedDay)
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isFlashing ? dayColor : dayColor.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(12)
+                              ),
+                              child: Text(
+                                '当前选择', 
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold
+                                )
+                              ),
+                            ),
+                          // 展开/收起按钮
+                          IconButton(
+                            icon: Icon(
+                              isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, 
+                              color: isFlashing 
+                                  ? dayColor
+                                  : isCurrentSelectedDay 
+                                      ? dayColor 
+                                      : Colors.grey[700],
+                              size: 28,
+                            ),
+                            onPressed: () => onExpansionChanged(!isExpanded),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            onTap: () => onExpansionChanged(!isExpanded),
-          ),
-          if (isExpanded)
-            Padding(
-              padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0), // 调整内边距
-              child: _buildActivitiesListForDay(context),
-            ),
-        ],
+            if (isExpanded)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                // 内容区域的装饰
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 日期描述（如果有）
+                      if (dayData.description != null && dayData.description!.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(14),
+                          margin: EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: dayColor.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: dayColor.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            dayData.description!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.black87,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      
+                      // 活动列表
+                      _buildActivitiesListForDay(context),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1449,7 +2188,13 @@ class _ActivityDaySection extends StatelessWidget {
                   mode: mode,
                   onEdit: () => onEditActivity(activities[i], i),
                   uiStatus: activities[i].id != null ? activityUiStatusMap[activities[i].id!] : null,
-                  onStatusChange: mode == TripMode.travel ? (newStatus) { /* ... */ } : null,
+                  onStatusChange: mode == TripMode.travel 
+                    ? (newStatus) {
+                        if (activities[i].id != null) {
+                          onActivityStatusChange(activities[i].id!, newStatus);
+                        }
+                      } 
+                    : null,
                 ),
               ),
               if (mode == TripMode.edit)
@@ -1460,7 +2205,7 @@ class _ActivityDaySection extends StatelessWidget {
                     onPressed: () => onDeleteActivity(activities[i]),
                     tooltip: '删除此活动',
                     padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    constraints: const BoxConstraints(),
                   ),
                 ),
             ],

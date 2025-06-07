@@ -1,6 +1,101 @@
-# Flask 后端服务 (途乐乐)
+# 途乐乐旅行助手后端
 
-这是为 Flutter 应用"途乐乐"提供的 Flask 后端服务，使用 MongoDB 作为数据库。
+这是途乐乐旅行助手应用的后端API服务。
+
+## 功能介绍
+
+- 用户认证和授权系统
+- 行程模板管理
+- 用户行程管理
+- AI旅行助手功能（基于Deepseek API）
+
+## 环境设置
+
+### 前提条件
+
+- Python 3.8+
+- MongoDB
+- Deepseek API密钥（或OpenAI API密钥作为备用）
+
+### 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 配置环境变量
+
+在项目根目录创建`.env`文件，填入以下内容：
+
+```
+# Flask配置
+FLASK_APP=run.py
+FLASK_ENV=development
+FLASK_DEBUG=1
+SECRET_KEY=your-secret-key-here
+
+# MongoDB数据库配置
+MONGO_URI=mongodb://localhost:27017/tulele_app
+
+# JWT配置
+JWT_SECRET_KEY=your-jwt-secret-key-here
+JWT_ACCESS_TOKEN_EXPIRES=3600
+
+# AI API配置 (必填)
+DEEPSEEK_API_URL=https://api.deepseek.com/v1/chat/completions
+DEEPSEEK_API_KEY=你的Deepseek-API密钥
+PRIMARY_MODEL=deepseek-chat
+
+# 备用API配置 (选填，当Deepseek不可用时使用)
+BACKUP_API_URL=https://api.openai.com/v1/chat/completions
+BACKUP_API_KEY=你的OpenAI-API密钥
+BACKUP_MODEL=gpt-3.5-turbo
+```
+
+## 运行方式
+
+### 开发环境
+
+```bash
+flask run
+# 或
+python run.py
+```
+
+### 生产环境
+
+```bash
+gunicorn -w 4 -b 0.0.0.0:5000 run:app
+```
+
+## API端点
+
+### AI相关端点
+
+- `POST /api/ai/chat`: AI聊天接口
+  - 请求体: `{"message": "用户消息", "history": [聊天历史]}`
+  - 响应: `{"content": "AI回复", "suggestions": ["建议1", "建议2"]}`
+
+- `POST /api/ai/generate-trip`: 生成AI旅游行程规划
+  - 请求体: `{"prompt": "用户请求", "history": [聊天历史]}`
+  - 响应: 结构化的行程JSON数据
+
+- `POST /api/ai/modify-trip`: 修改AI旅游行程规划
+  - 请求体: `{"prompt": "修改请求", "currentPlan": 当前行程对象, "history": [聊天历史]}`
+  - 响应: 修改后的行程JSON数据
+
+## AI功能处理流程
+
+1. 前端通过`DeepseekApi`类将请求发送到后端API
+2. 后端接收请求，调用真实的Deepseek API（或备用OpenAI API）
+3. 后端格式化AI响应并返回给前端
+4. 如果API调用失败，将提供合理的默认响应
+
+## 故障排除
+
+- **AI接口无响应**: 检查环境变量中的API密钥是否正确设置
+- **JSON解析错误**: 检查AI返回的响应是否符合预期格式
+- **网络超时**: 增大API超时时间或检查网络连接
 
 ## 核心数据模型关系
 

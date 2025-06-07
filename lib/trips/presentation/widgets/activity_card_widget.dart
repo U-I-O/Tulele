@@ -105,126 +105,336 @@ class ActivityDisplayCard extends StatelessWidget {
     bool isOngoing = mode == TripMode.travel && uiStatus == ActivityStatus.ongoing;
     bool isCompleted = mode == TripMode.travel && uiStatus == ActivityStatus.completed;
     
-    Color cardBackgroundColor = Colors.white;
-    Color titleColor = Colors.black87;
-    BoxShadow cardShadow = BoxShadow(color: Colors.grey.withOpacity(0.15), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, 2));
-
+    // 确定卡片的颜色主题
+    Color cardBackground = Colors.white;
+    Color accentColor = Theme.of(context).primaryColor;
+    Color timeColor = Colors.grey.shade800;
+    Color borderColor = Colors.transparent;
+    double elevation = 2.0;
+    
+    // 根据活动类型设置不同的颜色主题
+    switch (activity.type) {
+      case "food":
+        accentColor = Colors.orange.shade700;
+        break;
+      case "attraction":
+        accentColor = Colors.blue.shade600;
+        break;
+      case "accommodation":
+        accentColor = Colors.purple.shade500;
+        break;
+      case "transport":
+        accentColor = Colors.green.shade600;
+        break;
+      case "shopping":
+        accentColor = Colors.pink.shade400;
+        break;
+      default:
+        accentColor = Colors.teal.shade500;
+    }
+    
+    // 状态修改卡片外观
     if (isOngoing) {
-        cardBackgroundColor = Theme.of(context).primaryColor.withOpacity(0.05);
-        titleColor = Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor;
-        cardShadow = BoxShadow(color: Theme.of(context).primaryColor.withOpacity(0.2), spreadRadius: 2, blurRadius: 6, offset: const Offset(0, 3));
+      cardBackground = accentColor.withOpacity(0.08);
+      timeColor = accentColor;
+      borderColor = accentColor.withOpacity(0.6);
+      elevation = 3.0;
     } else if (isCompleted) {
-        cardBackgroundColor = Colors.grey.shade50;
-        titleColor = Colors.grey.shade600;
-        cardShadow = BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 0.5, blurRadius: 3, offset: const Offset(0, 1));
+      cardBackground = Colors.grey.shade50;
+      accentColor = Colors.grey.shade500;
+      timeColor = Colors.grey.shade500;
+      elevation = 1.0;
     }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       decoration: BoxDecoration(
-        color: cardBackgroundColor,
         borderRadius: BorderRadius.circular(16.0),
-        boxShadow: [cardShadow],
-        border: isOngoing ? Border.all(color: Theme.of(context).primaryColor.withOpacity(0.5), width: 1.5) : null,
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(isOngoing ? 0.2 : 0.1),
+            blurRadius: isOngoing ? 7 : 5,
+            spreadRadius: isOngoing ? 1 : 0,
+            offset: const Offset(0, 3)
+          )
+        ],
       ),
-      child: Material( // 添加 Material Widget 以支持 InkWell 的 splash 效果
-        type: MaterialType.transparency,
+      child: Material(
+        type: MaterialType.card,
+        elevation: elevation,
+        color: cardBackground,
+        borderRadius: BorderRadius.circular(16.0),
+        clipBehavior: Clip.antiAlias, // 添加裁剪效果
         child: InkWell(
           onTap: mode == TripMode.edit ? onEdit : null,
           borderRadius: BorderRadius.circular(16.0),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 左侧时间显示 (更突出)
-                Padding(
-                  padding: const EdgeInsets.only(right: 16.0, top: 2),
-                  child: Text(
-                    activity.startTime ?? "待定",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isOngoing ? Theme.of(context).primaryColor : Colors.grey.shade700,
+          child: Column(
+            children: [
+              // 顶部时间条
+              if (activity.startTime != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.15),
+                    border: Border(
+                      left: BorderSide(color: accentColor, width: 4),
                     ),
                   ),
-                ),
-                // 右侧内容区域
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      if (activity.icon != null && activity.icon!.isNotEmpty)
-                          Icon(_getIconData(activity.icon!), color: titleColor, size: 22),
+                      Icon(
+                        _getIconData(activity.type ?? ''),
+                        size: 18,
+                        color: accentColor,
+                      ),
+                      const SizedBox(width: 8),
                       Text(
-                        activity.title,
+                        activity.startTime!,
                         style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                          decoration: isCompleted ? TextDecoration.lineThrough : null,
+                          color: timeColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (activity.location != null && activity.location!.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(Icons.location_on_outlined, size: 15, color: Colors.grey[600]),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                activity.location!,
-                                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                      if (activity.endTime != null) ...[
+                        Text(
+                          ' - ',
+                          style: TextStyle(color: timeColor, fontSize: 15),
+                        ),
+                        Text(
+                          activity.endTime!,
+                          style: TextStyle(
+                            color: timeColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
-                      if (activity.description != null && activity.description!.isNotEmpty) ...[
-                         const SizedBox(height: 6),
-                         Text(activity.description!, style: TextStyle(fontSize: 13, color: Colors.grey[600]), maxLines: 2, overflow: TextOverflow.ellipsis,),
-                      ],
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end, // 将按钮推到右边
-                        children: [
-                           // 导航按钮 (图4样式)
-                          TextButton.icon(
-                              icon: Icon(Icons.navigation_outlined, size: 18, color: Theme.of(context).colorScheme.secondary),
-                              label: Text("导航", style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13, fontWeight: FontWeight.w600)),
-                              onPressed: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("导航功能待实现"))); },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                minimumSize: const Size(50,30),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                // backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.05), // 可选背景
-                              ),
+                      const Spacer(),
+                      if (isCompleted)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          if (mode == TripMode.edit) ...[
-                            const SizedBox(width: 8),
-                            TextButton(
-                              onPressed: onEdit,
-                              child: const Text("编辑", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                               style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                minimumSize: const Size(50,30),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
-                              ),
+                          child: Text(
+                            '已完成',
+                            style: TextStyle(
+                              color: Colors.green.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
                             ),
-                          ],
-                          // 旅行模式下的状态切换按钮 (若需要，可在此添加)
-                        ],
-                      )
+                          ),
+                        )
+                      else if (isOngoing)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: accentColor.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '进行中',
+                            style: TextStyle(
+                              color: accentColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              
+              // 内容主体
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 活动标题
+                    Text(
+                      activity.title,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: isCompleted ? Colors.grey.shade600 : Colors.black87,
+                        decoration: isCompleted ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    
+                    // 地点信息
+                    if (activity.location != null && activity.location!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: isCompleted ? Colors.grey.shade500 : accentColor,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              activity.location!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isCompleted ? Colors.grey.shade600 : Colors.grey.shade800,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    
+                    // 详细描述
+                    if (activity.description != null && activity.description!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isCompleted
+                              ? Colors.grey.shade100
+                              : accentColor.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          activity.description!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isCompleted ? Colors.grey.shade600 : Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                    
+                    // 交通信息
+                    if (activity.transportation != null && activity.transportation!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            _getTransportIcon(activity.transportation!),
+                            size: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            activity.transportation!,
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                          ),
+                          if (activity.durationMinutes != null) ...[
+                            const SizedBox(width: 5),
+                            Text(
+                              '(${activity.durationMinutes}分钟)',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                    
+                    // 底部按钮区域
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // 导航按钮
+                        OutlinedButton.icon(
+                          icon: Icon(Icons.navigation_outlined, size: 16, color: accentColor),
+                          label: Text(
+                            "导航",
+                            style: TextStyle(color: accentColor, fontSize: 13),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            minimumSize: const Size(0, 32),
+                            side: BorderSide(color: accentColor.withOpacity(0.5)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("导航功能待实现"))
+                            );
+                          },
+                        ),
+                        
+                        // 编辑按钮
+                        if (mode == TripMode.edit) ...[
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            icon: Icon(Icons.edit_outlined, size: 16, color: accentColor),
+                            label: Text(
+                              "编辑",
+                              style: TextStyle(color: accentColor, fontSize: 13),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              minimumSize: const Size(0, 32),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            onPressed: onEdit,
+                          ),
+                        ],
+                        
+                        // 旅行中的状态切换
+                        if (mode == TripMode.travel && onStatusChange != null) ...[
+                          const SizedBox(width: 8),
+                          _buildStatusToggleButton(context, accentColor),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+  
+  // 构建状态切换按钮
+  Widget _buildStatusToggleButton(BuildContext context, Color accentColor) {
+    if (uiStatus == ActivityStatus.completed) {
+      return TextButton.icon(
+        icon: Icon(Icons.refresh, size: 16, color: Colors.amber.shade800),
+        label: const Text("取消完成", style: TextStyle(fontSize: 13)),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          minimumSize: const Size(0, 32),
+          foregroundColor: Colors.amber.shade800,
+        ),
+        onPressed: () => onStatusChange?.call(ActivityStatus.pending),
+      );
+    } else if (uiStatus == ActivityStatus.ongoing) {
+      return TextButton.icon(
+        icon: Icon(Icons.check_circle_outline, size: 16, color: Colors.green.shade700),
+        label: const Text("标记完成", style: TextStyle(fontSize: 13)),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          minimumSize: const Size(0, 32),
+          foregroundColor: Colors.green.shade700,
+        ),
+        onPressed: () => onStatusChange?.call(ActivityStatus.completed),
+      );
+    } else {
+      return TextButton.icon(
+        icon: Icon(Icons.play_arrow, size: 16, color: accentColor),
+        label: const Text("开始", style: TextStyle(fontSize: 13)),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          minimumSize: const Size(0, 32),
+        ),
+        onPressed: () => onStatusChange?.call(ActivityStatus.pending),
+      );
+    }
   }
 
   IconData _getIconData(String iconName) {
@@ -234,13 +444,25 @@ class ActivityDisplayCard extends StatelessWidget {
       case 'flight': case 'plane': return Icons.flight_takeoff_rounded;
       case 'train': return Icons.train_rounded;
       case 'bus': return Icons.directions_bus_rounded;
-      case 'car': case 'taxi': case 'drive': return Icons.directions_car_rounded;
+      case 'car': case 'taxi': case 'drive': case 'transport': return Icons.directions_car_rounded;
       case 'walk': return Icons.directions_walk_rounded;
       case 'museum': case 'art': return Icons.museum_rounded;
-      case 'landmark': case 'sightseeing': return Icons.camera_alt_rounded;
+      case 'landmark': case 'sightseeing': case 'attraction': return Icons.camera_alt_rounded;
       case 'shopping': return Icons.shopping_bag_rounded;
       case 'activity': return Icons.local_activity_rounded;
       default: return Icons.place_rounded;
+    }
+  }
+  
+  IconData _getTransportIcon(String transportType) {
+    switch (transportType.toLowerCase()) {
+      case '步行': return Icons.directions_walk;
+      case '公交': return Icons.directions_bus;
+      case '出租车': return Icons.local_taxi;
+      case '地铁': return Icons.subway;
+      case '共享单车': return Icons.pedal_bike;
+      case '景区班车': return Icons.airport_shuttle;
+      default: return Icons.commute;
     }
   }
 }
@@ -258,19 +480,26 @@ class TransportConnector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 如果没有交通信息，返回一个简单的连接线
     if (transportationMode == null && durationMinutes == null) {
-      // 如果没有交通信息，可以显示一条简单的虚线或占位符
       return Container(
-        height: 40, // 默认高度
-        margin: const EdgeInsets.only(left: 32.0), // 与卡片内容左侧大致对齐
-        alignment: Alignment.centerLeft,
-        child: CustomPaint(
-          painter: LineConnectorPainter(lineColor: Colors.grey.shade300),
-          size: const Size(20, double.infinity), // 线条的宽度和填充父级高度
+        height: 40,
+        margin: const EdgeInsets.only(left: 32.0),
+        child: Column(
+          children: [
+            Expanded(
+              child: VerticalDivider(
+                color: Colors.grey.shade300,
+                thickness: 1.5,
+                width: 20,
+              ),
+            ),
+          ],
         ),
       );
     }
     
+    // 计算时间文本
     String durationText = "";
     if (durationMinutes != null) {
       if (durationMinutes! >= 60) {
@@ -283,18 +512,107 @@ class TransportConnector extends StatelessWidget {
       }
     }
 
+    // 根据交通方式确定颜色和图标
+    Color transportColor;
+    IconData transportIcon;
+    
+    switch (transportationMode?.toLowerCase() ?? '') {
+      case '步行':
+        transportColor = Colors.green.shade600;
+        transportIcon = Icons.directions_walk;
+        break;
+      case '公交':
+        transportColor = Colors.blue.shade600;
+        transportIcon = Icons.directions_bus;
+        break;
+      case '出租车':
+        transportColor = Colors.amber.shade700;
+        transportIcon = Icons.local_taxi;
+        break;
+      case '地铁':
+        transportColor = Colors.red.shade600;
+        transportIcon = Icons.subway;
+        break;
+      case '共享单车':
+        transportColor = Colors.orange.shade600;
+        transportIcon = Icons.pedal_bike;
+        break;
+      case '景区班车':
+        transportColor = Colors.purple.shade400;
+        transportIcon = Icons.airport_shuttle;
+        break;
+      default:
+        transportColor = Colors.grey.shade600;
+        transportIcon = Icons.commute;
+    }
+
     return Container(
-      height: 50, // 根据需要调整高度
-      margin: const EdgeInsets.only(left: 32.0), // 与卡片内容左侧大致对齐，给图标和文字留空间
-      alignment: Alignment.centerLeft,
-      child: CustomPaint(
-        painter: LineConnectorPainter(
-          lineColor: Colors.grey.shade300,
-          transportText: transportationMode,
-          durationText: durationText.isNotEmpty ? durationText : null,
-        ),
-        child: Container(), // CustomPaint 需要一个 child 来确定其绘制区域
-        size: const Size(100, double.infinity), // 为 Painter 提供宽度，高度将撑满父级
+      height: 60,
+      margin: const EdgeInsets.only(left: 32.0),
+      child: Row(
+        children: [
+          // 左侧连接线
+          Container(
+            width: 20,
+            child: Column(
+              children: [
+                Expanded(
+                  child: VerticalDivider(
+                    color: transportColor.withOpacity(0.5),
+                    thickness: 1.5,
+                    width: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 圆形交通图标
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: transportColor.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: transportColor.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            child: Center(
+              child: Icon(
+                transportIcon,
+                size: 18,
+                color: transportColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // 交通方式和时间文本
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (transportationMode != null)
+                Text(
+                  transportationMode!,
+                  style: TextStyle(
+                    color: transportColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              if (durationText.isNotEmpty)
+                Text(
+                  durationText,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

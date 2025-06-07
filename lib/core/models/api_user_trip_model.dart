@@ -1,6 +1,10 @@
 // lib/core/models/api_user_trip_model.dart
 import 'dart:convert';
 import './api_trip_plan_model.dart'; // 用于 planDetails 和转换
+import 'dart:math';
+import 'package:intl/intl.dart';
+import '../../trips/services/geo_service.dart';
+import 'package:flutter/foundation.dart';
 
 // Helper functions
 List<ApiUserTrip> apiUserTripListFromJson(String str) =>
@@ -84,6 +88,629 @@ class ApiUserTrip {
 
     // Getter for display name to simplify UI logic
     String get displayName => userTripNameOverride ?? planDetails?.name ?? '未命名行程';
+
+    /// 从AI生成的文本解析行程
+    factory ApiUserTrip.fromAiGeneratedPlan(
+      String planText,
+      {
+        String? name,
+        String? creatorId,
+        String? destination,
+      }
+    ) {
+      // 预设值初始化
+      DateTime now = DateTime.now();
+      String generatedDestination = destination ?? '';
+      String description = '';
+      List<ApiDayFromUserTrip> parsedDays = [];
+      List<String> parsedTags = [];
+      
+      // 解析AI生成文本
+      List<String> lines = planText.split('\n');
+      
+      // 查找目的地
+      for (String line in lines) {
+        if (line.contains('兰州') || line.contains('城市') || line.contains('旅行')) {
+          generatedDestination = '兰州';
+          break;
+        }
+      }
+      
+      // 提取描述
+      for (String line in lines) {
+        if (line.contains('日游') || line.contains('天行程') || line.contains('深度')) {
+          description = line.trim();
+          break;
+        }
+      }
+      
+      if (description.isEmpty && lines.isNotEmpty) {
+        // 用第一行或者合成描述
+        description = '基于AI生成的${generatedDestination}行程方案';
+      }
+      
+      // 查找行程总天数
+      int totalDays = 1;  // 默认至少一天
+      RegExp dayRegex = RegExp(r'(\d+)\s*[天日]游');
+      for (String line in lines) {
+        var match = dayRegex.firstMatch(line);
+        if (match != null) {
+          totalDays = int.tryParse(match.group(1) ?? '1') ?? 1;
+          if (totalDays > 1) break;  // 找到多日游就停止
+        }
+      }
+      
+      print('检测到AI行程总天数: $totalDays');
+      
+      // 提取每天的内容块
+      Map<int, List<String>> dayContentBlocks = {};
+      // 将文本分割成每天的块
+      int currentDay = 0;
+      List<String> currentDayLines = [];
+      
+      // 首先，确定每一天的内容块
+      for (String line in lines) {
+        // 使用更强的正则表达式匹配各种"第X天"格式
+        RegExp dayStartRegex = RegExp(r'第\s*(\d+)\s*[天日]|Day\s*(\d+)|(\d+)[天日]行程');
+        var dayMatch = dayStartRegex.firstMatch(line);
+        
+        if (dayMatch != null) {
+          // 找到新的一天
+          String dayNumStr = dayMatch.group(1) ?? dayMatch.group(2) ?? dayMatch.group(3) ?? '1';
+          int dayNum = int.tryParse(dayNumStr) ?? 1;
+          
+          // 如果当前已经在记录某天，保存之前的内容
+          if (currentDay > 0 && currentDayLines.isNotEmpty) {
+            dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+          }
+          
+          // 开始记录新的一天
+          currentDay = dayNum;
+          currentDayLines = [line]; // 开始新的一天，包含当前行
+        } else if (currentDay > 0) {
+          // 如果已经确定了当前天，继续添加内容
+          currentDayLines.add(line);
+        }
+      }
+      
+      // 保存最后一天的内容
+      if (currentDay > 0 && currentDayLines.isNotEmpty) {
+        dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+      }
+      
+      // 如果没有按天分割成功，尝试其他分割方法
+      if (dayContentBlocks.isEmpty) {
+        // 先尝试更宽松的日期模式匹配
+        currentDay = 0;
+        currentDayLines = [];
+        
+        for (String line in lines) {
+          if (line.contains('第1天') || line.contains('Day 1') || line.contains('第一天') || 
+              (currentDay == 0 && (line.contains('早上') || line.contains('上午') || line.contains('酒店')))) {
+            if (currentDay > 0 && currentDayLines.isNotEmpty) {
+              dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+            }
+            currentDay = 1;
+            currentDayLines = [line];
+          } else if ((line.contains('第2天') || line.contains('Day 2') || line.contains('第二天')) && currentDay >= 1) {
+            if (currentDayLines.isNotEmpty) {
+              dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+            }
+            currentDay = 2;
+            currentDayLines = [line];
+          } else if ((line.contains('第3天') || line.contains('Day 3') || line.contains('第三天')) && currentDay >= 2) {
+            if (currentDayLines.isNotEmpty) {
+              dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+            }
+            currentDay = 3;
+            currentDayLines = [line];
+          } else if ((line.contains('第4天') || line.contains('Day 4') || line.contains('第四天')) && currentDay >= 3) {
+            if (currentDayLines.isNotEmpty) {
+              dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+            }
+            currentDay = 4;
+            currentDayLines = [line];
+          } else if ((line.contains('第5天') || line.contains('Day 5') || line.contains('第五天')) && currentDay >= 4) {
+            if (currentDayLines.isNotEmpty) {
+              dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+            }
+            currentDay = 5;
+            currentDayLines = [line];
+          } else if (currentDay > 0) {
+            currentDayLines.add(line);
+          }
+        }
+        
+        // 保存最后一天的内容
+        if (currentDay > 0 && currentDayLines.isNotEmpty) {
+          dayContentBlocks[currentDay] = List<String>.from(currentDayLines);
+        }
+      }
+      
+      // 如果仍然没有分割成功，强制分割为等长的天数
+      if (dayContentBlocks.isEmpty && totalDays > 1) {
+        print('没有检测到明确的天数分割，强制分割为 $totalDays 天');
+        int linesPerDay = (lines.length / totalDays).ceil();
+        for (int day = 1; day <= totalDays; day++) {
+          int startIdx = (day - 1) * linesPerDay;
+          int endIdx = day * linesPerDay;
+          if (endIdx > lines.length) endIdx = lines.length;
+          
+          if (startIdx < lines.length) {
+            List<String> dayLines = lines.sublist(startIdx, endIdx);
+            dayContentBlocks[day] = dayLines;
+          }
+        }
+      }
+      
+      // 分析每日行程和活动
+      Map<int, List<ApiActivityFromUserTrip>> activitiesByDay = {};
+      Map<int, String> dayTitles = {};
+      Map<int, String> dayDescriptions = {};
+      
+      // 添加函数用于生成更自然的时间
+      int _generateRandomMinute() {
+        // 生成更自然的时间，如8:00, 8:15, 8:30, 8:45，而不是8:37这样奇怪的时间
+        List<int> naturalMinutes = [0, 15, 30, 45];
+        return naturalMinutes[Random().nextInt(naturalMinutes.length)];
+      }
+
+      // 处理每一天的内容
+      dayContentBlocks.forEach((day, dayLines) {
+        // 提取标题和描述
+        String title = '第${day}天：${generatedDestination}游';
+        String description = '';
+        
+        if (dayLines.isNotEmpty) {
+          // 提取更有特色的标题
+          RegExp titleRegex = RegExp(r'主题.*:|.*探访|.*体验|.*之旅', caseSensitive: false);
+          for (String line in dayLines) {
+            final titleMatch = titleRegex.firstMatch(line);
+            if (titleMatch != null) {
+              title = '第${day}天：${titleMatch.group(0)!.replaceAll("主题：", "").trim()}';
+              break;
+            }
+          }
+
+          // 第一行通常是标题
+          if (dayLines.first.contains('第${day}天') || dayLines.first.contains('Day ${day}')) {
+            title = dayLines.first.trim();
+          }
+          
+          // 尝试提取描述
+          for (String line in dayLines) {
+            if (line.length > 10 && !line.contains('**') && !line.contains('--')) {
+              description = line.trim();
+              break;
+            }
+          }
+        }
+        
+        dayTitles[day] = title;
+        dayDescriptions[day] = description;
+        
+        // 提取活动
+        List<ApiActivityFromUserTrip> dayActivities = [];
+        
+        // 生成这一天的起始时间（比较合理的早晨时间）
+        int startHour = 7 + Random().nextInt(3); // 7:00-9:59之间
+        int startMinute = _generateRandomMinute();
+        DateTime currentTime = DateTime(now.year, now.month, now.day, startHour, startMinute);
+        
+        // 遍历每一行，提取活动
+        bool foundActivity = false;
+        for (String line in dayLines) {
+          // 匹配时间段格式，如 "09:00"或"**09:00**"
+          RegExp timeRegex = RegExp(r'(\d{1,2}[:：]\d{2})');
+          var timeMatches = timeRegex.allMatches(line).toList();
+          
+          if (timeMatches.isNotEmpty) {
+            // 找到了时间格式
+            String timeText = line.substring(timeMatches.first.start, timeMatches.first.end).replaceAll('：', ':');
+            List<String> timeParts = timeText.split(':');
+            int activityHour = int.tryParse(timeParts[0]) ?? currentTime.hour;
+            int activityMinute = int.tryParse(timeParts[1]) ?? currentTime.minute;
+            
+            // 更新当前时间
+            currentTime = DateTime(now.year, now.month, now.day, activityHour, activityMinute);
+            
+            // 提取活动标题
+            String activityTitle = line.replaceAll(timeText, '').replaceAll('**', '').trim();
+            if (activityTitle.startsWith("-")) {
+              activityTitle = activityTitle.substring(1).trim();
+            }
+            
+            // 默认活动时长为1-2小时
+            int activityDuration = 60 + Random().nextInt(60);
+            
+            // 根据活动类型调整时长
+            if (activityTitle.contains("餐") || activityTitle.contains("吃饭")) {
+              activityDuration = 60 + Random().nextInt(30); // 用餐时间约1-1.5小时
+            } else if (activityTitle.contains("游览") || activityTitle.contains("参观")) {
+              activityDuration = 120 + Random().nextInt(60); // 游览时间约2-3小时
+            }
+            
+            // 计算结束时间
+            DateTime endTime = currentTime.add(Duration(minutes: activityDuration));
+            String endTimeText = "${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}";
+            
+            // 提取地点信息（在当前行或后续几行中寻找）
+            String location = "";
+            String description = "";
+
+            
+            int lineIndex = dayLines.indexOf(line);
+            for (int j = lineIndex; j < lineIndex + 3 && j < dayLines.length; j++) {
+              String checkLine = dayLines[j];
+              if (checkLine.contains('地点') && checkLine.contains(':')) {
+                location = checkLine.split(':')[1].trim();
+              } else if (checkLine.contains('描述') && checkLine.contains(':')) {
+                description = checkLine.split(':')[1].trim();
+              }
+            }
+            
+            // 如果没有找到地点，生成一个默认地点
+            if (location.isEmpty && activityTitle.isNotEmpty) {
+              if (activityTitle.contains("餐")) {
+                location = "$generatedDestination美食街";
+              } else if (activityTitle.contains("景点") || activityTitle.contains("游览")) {
+                location = "$generatedDestination${activityTitle.replaceAll("游览", "").replaceAll("参观", "").trim()}景区";
+              } else {
+                location = "$generatedDestination${activityTitle.split(" ").first}";
+              }
+            }
+            
+            // 创建活动对象
+            ApiActivityFromUserTrip activity = ApiActivityFromUserTrip(
+              title: activityTitle,
+              description: description,
+              location: location,
+              startTime: timeText,
+              endTime: endTimeText,
+              type: _determineActivityType(activityTitle),
+              userStatus: 'todo',
+              // 添加经纬度字段，后续可以通过地理编码服务获取
+              coordinates: null, // 初始为空，需要在后续异步获取
+              // 如果不是第一个活动，添加交通方式和时间
+              transportation: dayActivities.isEmpty ? null : "步行",
+              durationMinutes: dayActivities.isEmpty ? null : 15 + Random().nextInt(30),
+            );
+            
+            dayActivities.add(activity);
+            foundActivity = true;
+            
+            // 如果有地点名称，可以尝试在后台异步获取经纬度
+            // TODO: 实现地理编码服务调用或使用百度地图API获取经纬度
+            // 可以使用以下伪代码实现：
+            /*
+            if (location.isNotEmpty) {
+              getLocationCoordinates(location).then((coordinates) {
+                if (coordinates != null) {
+                  activity.coordinates = {
+                    "latitude": coordinates.latitude,
+                    "longitude": coordinates.longitude
+                  };
+                }
+              });
+            }
+            */
+            
+            // 更新当前时间为结束时间加30分钟（活动之间的缓冲）
+            currentTime = endTime.add(const Duration(minutes: 30));
+          } else if (line.contains('兰州') || line.contains('参观') || 
+              line.contains('游览') || line.contains('购物') || line.contains('午餐') || 
+              line.contains('晚餐') || line.contains('用餐')) {
+            
+            // 没有时间的活动，根据当前时间设置
+            String activityTitle = line.trim();
+            
+            // 根据活动类型设置合理的时间
+            if (activityTitle.contains("早餐")) {
+              currentTime = DateTime(now.year, now.month, now.day, 8, 0);
+            } else if (activityTitle.contains("午餐")) {
+              currentTime = DateTime(now.year, now.month, now.day, 12, 30);
+            } else if (activityTitle.contains("晚餐")) {
+              currentTime = DateTime(now.year, now.month, now.day, 18, 30);
+            }
+            
+            // 默认活动时长
+            int activityDuration = 60 + Random().nextInt(60);
+            
+            // 根据活动调整时长
+            if (activityTitle.contains("餐")) {
+              activityDuration = 60 + Random().nextInt(30); // 用餐时间约1-1.5小时
+            } else if (activityTitle.contains("游览") || activityTitle.contains("参观")) {
+              activityDuration = 120 + Random().nextInt(60); // 游览时间约2-3小时
+            }
+            
+            // 计算结束时间
+            DateTime endTime = currentTime.add(Duration(minutes: activityDuration));
+            
+            // 创建活动对象
+            ApiActivityFromUserTrip activity = ApiActivityFromUserTrip(
+              title: activityTitle,
+              startTime: "${currentTime.hour.toString().padLeft(2, '0')}:${currentTime.minute.toString().padLeft(2, '0')}",
+              endTime: "${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}",
+              type: _determineActivityType(activityTitle),
+              userStatus: 'todo',
+              // 如果不是第一个活动，添加交通方式和时间
+              transportation: dayActivities.isEmpty ? null : "步行",
+              durationMinutes: dayActivities.isEmpty ? null : 15 + Random().nextInt(30),
+            );
+            
+            dayActivities.add(activity);
+            foundActivity = true;
+            
+            // 更新当前时间为结束时间加30分钟（活动之间的缓冲）
+            currentTime = endTime.add(const Duration(minutes: 30));
+          }
+        }
+        
+        // 如果这一天没有找到活动，创建默认活动
+        if (!foundActivity) {
+          List<ApiActivityFromUserTrip> defaultActivities = [];
+          
+          // 早餐 (8:00-9:00)
+          defaultActivities.add(ApiActivityFromUserTrip(
+            title: "酒店早餐",
+            description: "享用酒店早餐，开始美好的一天",
+            location: "$generatedDestination酒店餐厅",
+            startTime: "08:00",
+            endTime: "09:00",
+            type: "food",
+            userStatus: "todo",
+          ));
+          
+          // 上午活动 (9:30-12:00)
+          defaultActivities.add(ApiActivityFromUserTrip(
+            title: "$generatedDestination景点游览",
+            description: "游览$generatedDestination著名景点",
+            location: "$generatedDestination景区",
+            startTime: "09:30",
+            endTime: "12:00",
+            type: "attraction",
+            userStatus: "todo",
+            transportation: "出租车",
+            durationMinutes: 20,
+          ));
+          
+          // 午餐 (12:30-14:00)
+          defaultActivities.add(ApiActivityFromUserTrip(
+            title: "当地特色午餐",
+            description: "品尝$generatedDestination特色美食",
+            location: "$generatedDestination美食街",
+            startTime: "12:30",
+            endTime: "14:00",
+            type: "food",
+            userStatus: "todo",
+            transportation: "步行",
+            durationMinutes: 15,
+          ));
+          
+          // 下午活动 (14:30-17:30)
+          defaultActivities.add(ApiActivityFromUserTrip(
+            title: "文化体验活动",
+            description: "体验$generatedDestination特色文化活动",
+            location: "$generatedDestination文化中心",
+            startTime: "14:30",
+            endTime: "17:30",
+            type: "activity",
+            userStatus: "todo",
+            transportation: "公交",
+            durationMinutes: 25,
+          ));
+          
+          // 晚餐 (18:00-19:30)
+          defaultActivities.add(ApiActivityFromUserTrip(
+            title: "$generatedDestination特色晚餐",
+            description: "享用当地特色晚餐",
+            location: "$generatedDestination特色餐厅",
+            startTime: "18:00",
+            endTime: "19:30",
+            type: "food",
+            userStatus: "todo",
+            transportation: "出租车",
+            durationMinutes: 15,
+          ));
+          
+          dayActivities.addAll(defaultActivities);
+        }
+        
+        activitiesByDay[day] = dayActivities;
+      });
+      
+      // 辅助方法：生成随机交通方式
+      String _generateRandomTransportation() {
+        List<String> transportModes = ["步行", "公交", "出租车", "地铁", "共享单车"];
+        return transportModes[Random().nextInt(transportModes.length)];
+      }
+      
+      // 确保至少有一天
+      if (dayContentBlocks.isEmpty) {
+        // 如果没有分出天数，创建默认的一天行程
+        List<ApiActivityFromUserTrip> activities = [];
+        
+        // 早餐 (7:30-8:30)
+        DateTime breakfastTime = DateTime(now.year, now.month, now.day, 7, 30);
+        activities.add(ApiActivityFromUserTrip(
+          title: "酒店早餐",
+          description: "在酒店享用丰盛的早餐",
+          location: "$generatedDestination酒店餐厅",
+          startTime: "${breakfastTime.hour}:${breakfastTime.minute.toString().padLeft(2, '0')}",
+          endTime: "${breakfastTime.hour + 1}:${breakfastTime.minute.toString().padLeft(2, '0')}",
+          type: "food",
+          userStatus: "todo",
+        ));
+        
+        // 上午活动 (9:00-11:30)
+        DateTime morningTime = DateTime(now.year, now.month, now.day, 9, 0);
+        activities.add(ApiActivityFromUserTrip(
+          title: "景点游览",
+          description: "参观$generatedDestination著名的旅游胜地",
+          location: "$generatedDestination景区",
+          startTime: "${morningTime.hour}:${morningTime.minute.toString().padLeft(2, '0')}",
+          endTime: "11:30",
+          type: "attraction",
+          userStatus: "todo",
+          transportation: "出租车",
+          durationMinutes: 20,
+        ));
+        
+        // 午餐 (12:00-13:30)
+        activities.add(ApiActivityFromUserTrip(
+          title: "$generatedDestination特色午餐",
+          description: "品尝当地美食",
+          location: "$generatedDestination美食街",
+          startTime: "12:00",
+          endTime: "13:30",
+          type: "food",
+          userStatus: "todo",
+          transportation: "步行",
+          durationMinutes: 15,
+        ));
+        
+        // 下午活动 (14:00-17:00)
+        activities.add(ApiActivityFromUserTrip(
+          title: "文化体验活动",
+          description: "体验当地特色文化活动",
+          location: "$generatedDestination文化中心",
+          startTime: "14:00",
+          endTime: "17:00",
+          type: "activity",
+          userStatus: "todo",
+          transportation: "公交",
+          durationMinutes: 25,
+        ));
+        
+        // 晚餐 (18:00-19:30)
+        activities.add(ApiActivityFromUserTrip(
+          title: "晚餐",
+          description: "享用当地特色美食",
+          location: "$generatedDestination餐厅",
+          startTime: "18:00",
+          endTime: "19:30",
+          type: "food",
+          userStatus: "todo",
+          transportation: "出租车",
+          durationMinutes: 15,
+        ));
+        
+        activitiesByDay[1] = activities;
+        dayTitles[1] = '第1天：${generatedDestination}一日游';
+        dayDescriptions[1] = '探索${generatedDestination}的精彩景点与美食';
+      }
+      
+      // 提取或创建标签
+      if (generatedDestination.isNotEmpty) {
+        parsedTags.add(generatedDestination);
+      }
+      parsedTags.add('AI生成');
+      if (totalDays > 1) {
+        parsedTags.add('${totalDays}日游');
+      }
+      
+      // 确保天数与输入匹配
+      int actualDays = dayContentBlocks.length > 0 ? dayContentBlocks.length : totalDays;
+      if (actualDays < totalDays) {
+        print('警告: 实际解析出的天数($actualDays)小于检测的总天数($totalDays)');
+        actualDays = totalDays; // 以输入的天数为准
+      }
+      
+      // 为每一天创建ApiDayFromUserTrip对象
+      for (int day = 1; day <= actualDays; day++) {
+        // 确保有活动列表，即使为空
+        List<ApiActivityFromUserTrip> dayActivities = activitiesByDay[day] ?? [];
+        
+        // 创建标题
+        String dayTitle = dayTitles[day] ?? '第${day}天：${generatedDestination}游';
+        
+        // 创建描述
+        String dayDescription = dayDescriptions[day] ?? '第${day}天 ${generatedDestination}行程';
+        
+        // 创建日期
+        DateTime dayDate = now.add(Duration(days: day - 1));
+        
+        // 添加到days列表
+        ApiDayFromUserTrip dayObj = ApiDayFromUserTrip(
+          dayNumber: day,
+          date: dayDate,
+          title: dayTitle,
+          description: dayDescription,
+          activities: dayActivities,
+        );
+        
+        parsedDays.add(dayObj);
+      }
+      
+      // 打印最终的天数信息
+      print('最终生成的行程天数: ${parsedDays.length}');
+      
+      // 设置生成的天，并添加获取经纬度的处理
+      Future<void> processActivitiesCoordinates(List<ApiDayFromUserTrip> days, String destination) async {
+        final geoService = GeoService();
+        
+        for (var day in days) {
+          for (var activity in day.activities) {
+            if (activity.coordinates == null && activity.location != null && activity.location!.isNotEmpty) {
+              // 使用城市+地点名进行地理编码查询，提高准确度
+              final coordinates = await geoService.getCoordinatesFromName(
+                activity.location!,
+                city: destination
+              );
+              
+              if (coordinates != null) {
+                activity.coordinates = coordinates;
+                debugPrint('已获取活动[${activity.title}]的经纬度: (${coordinates['latitude']}, ${coordinates['longitude']})');
+              }
+            }
+          }
+        }
+      }
+
+      // 创建最终的ApiUserTrip对象
+      ApiUserTrip trip = ApiUserTrip(
+        id: 'temp_${now.millisecondsSinceEpoch}', // 临时ID，后端会替换
+        creatorId: creatorId ?? "",
+        userTripNameOverride: '${generatedDestination}${actualDays > 1 ? "${actualDays}日" : ""}游行程',
+        destination: generatedDestination,
+        startDate: now,
+        endDate: now.add(Duration(days: parsedDays.length - 1)),
+        tags: parsedTags,
+        description: description,
+        days: parsedDays,
+        members: [],
+        messages: [],
+        tickets: [],
+        userNotes: [],
+        publishStatus: 'draft',
+        travelStatus: 'planning',
+      );
+      
+      // 异步处理活动经纬度，不阻塞创建过程
+      // 由于异步处理，在实际使用时经纬度可能尚未完全加载
+      processActivitiesCoordinates(parsedDays, generatedDestination);
+      
+      return trip;
+    }
+    
+    // 辅助方法：根据活动标题确定活动类型
+    static String _determineActivityType(String title) {
+      title = title.toLowerCase();
+      
+      if (title.contains('餐') || title.contains('吃') || title.contains('美食')) {
+        return 'food';
+      } else if (title.contains('购物') || title.contains('商场')) {
+        return 'shopping';
+      } else if (title.contains('景点') || title.contains('游览') || title.contains('参观')) {
+        return 'attraction';
+      } else if (title.contains('交通') || title.contains('车站') || title.contains('机场')) {
+        return 'transport';
+      } else if (title.contains('住宿') || title.contains('酒店') || title.contains('民宿')) {
+        return 'accommodation';
+      } else {
+        return 'activity';
+      }
+    }
 
 
     factory ApiUserTrip.fromJson(Map<String, dynamic> json) {
@@ -512,3 +1139,36 @@ class ApiNote { // 行程级笔记，对应 userTrips.user_notes
 }
 
 // ApiFeed 类被移除了，因为 userTrips 集合中不再包含 feeds 字段
+
+// 定义一个辅助方法，用于尝试解析AI返回的JSON格式数据
+// 如果能成功解析为JSON，则直接使用JSON结构
+Map<String, dynamic>? _tryParseJson(String text) {
+  try {
+    // 尝试查找文本中的JSON部分（通常在```json和```之间）
+    final jsonRegex = RegExp(r'```json([\s\S]*?)```');
+    final jsonMatch = jsonRegex.firstMatch(text);
+    
+    String jsonText;
+    if (jsonMatch != null && jsonMatch.groupCount >= 1) {
+      jsonText = jsonMatch.group(1)!.trim();
+    } else {
+      // 也可能不带语言标识符，只用```包围
+      final basicJsonRegex = RegExp(r'```([\s\S]*?)```');
+      final basicJsonMatch = basicJsonRegex.firstMatch(text);
+      
+      if (basicJsonMatch != null && basicJsonMatch.groupCount >= 1) {
+        jsonText = basicJsonMatch.group(1)!.trim();
+      } else {
+        // 没有找到包围的JSON内容，尝试直接解析整个文本
+        jsonText = text;
+      }
+    }
+    
+    final data = json.decode(jsonText) as Map<String, dynamic>;
+    debugPrint('成功解析到JSON数据，字段: ${data.keys.join(', ')}');
+    return data;
+  } catch (e) {
+    debugPrint('JSON解析失败: $e');
+    return null;
+  }
+}
