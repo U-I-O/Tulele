@@ -3,11 +3,12 @@
 
 # But don't ignore directories
 !*/
+!android\app\src\main       
+!android\app\build.gradle.kts
 
 # Except for these directories which we want to ignore
 /.dart_tool/
 /.idea/
-/android/
 /build/
 /ios/
 /linux/
@@ -27,10 +28,18 @@
 !/assets/*
 !/assets/**
 
+!/android/app/src/main/java/com/example/tulele/MyApplication.java
+!/android/app/src/main/AndroidManifest.xml
+
 # Don't ignore the lib directory and its contents
 !/lib/
 !/lib/*
 !/lib/**
+
+# Don't ignore the backend directory and its contents
+!/backend/
+!/backend/*
+!/backend/**
 
 # Re-ignore specific files within lib that should be ignored (e.g., generated files)
 /lib/**/*.g.dart

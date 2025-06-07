@@ -1,5 +1,6 @@
 // lib/creator_earnings_page.dart
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class EarningsData {
   final String period;
@@ -54,8 +55,8 @@ class CreatorEarningsPage extends StatelessWidget {
           children: [
             _buildEarningsSummaryCard(context),
             const SizedBox(height: 24.0),
-            _buildSectionTitle(context, '收益趋势 (模拟图表区)'),
-            _buildEarningsTrendChartPlaceholder(context),
+            _buildSectionTitle(context, '收益趋势'),
+            _buildEarningsTrendChart(context),
             const SizedBox(height: 24.0),
             _buildSectionTitle(context, '本月激励构成'),
             _buildEarningsBreakdownCard(context),
@@ -79,70 +80,296 @@ class CreatorEarningsPage extends StatelessWidget {
   }
 
   Widget _buildEarningsSummaryCard(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '5月创作激励',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '¥${currentMonthEarnings.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '结算周期: $currentMonthPeriod',
-              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.history_outlined, size: 20),
-              label: const Text('查看历史激励'),
-              onPressed: () { /* TODO: 跳转到历史激励页面 */ },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).hintColor,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
+      elevation: 4,
+      shadowColor: theme.primaryColor.withOpacity(0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.primaryColor.withOpacity(0.1),
+              theme.primaryColor.withOpacity(0.05),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center, // 改为居中对齐
+            children: [
+              // 标题部分
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center, // 标题行也居中
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.insights_rounded,
+                      color: theme.primaryColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '5月创作激励',
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor
+                    ),
+                  ),
+                ],
               ),
-            )
-          ],
+              const SizedBox(height: 16),
+
+              // 金额显示
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center, // 金额行居中
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '¥',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    currentMonthEarnings.toStringAsFixed(2),
+                    style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+              // 日期信息居中
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center, // 日期行居中
+                children: [
+                  Icon(
+                    Icons.date_range_outlined,
+                    size: 14,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '结算周期: $currentMonthPeriod',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // 查看历史按钮 - 保持居中
+              Center( // 确保按钮居中
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.history_outlined, size: 18),
+                  label: const Text('查看历史激励'),
+                  onPressed: () { /* TODO: 跳转到历史激励页面 */ },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.primaryColor,
+                    side: BorderSide(color: theme.primaryColor),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEarningsTrendChartPlaceholder(BuildContext context) {
+  Widget _buildEarningsTrendChart(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Card(
-      elevation: 1,
-      child: Container(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
         padding: const EdgeInsets.all(16.0),
-        height: 200,
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: Colors.grey[300]!)
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.show_chart_outlined, size: 48, color: Colors.grey[500]),
-              const SizedBox(height: 8),
-              Text(
-                '收益趋势图表展示区域',
-                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '近期收益变化',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
               ),
-              const SizedBox(height:4),
-              Text(
-                '(需要集成图表库如 charts_flutter 或 fl_chart)',
-                style: TextStyle(color: Colors.grey[500], fontSize: 10),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    horizontalInterval: 50,
+                    verticalInterval: 1,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: Colors.grey[300],
+                        strokeWidth: 1,
+                      );
+                    },
+                    getDrawingVerticalLine: (value) {
+                      return FlLine(
+                        color: Colors.grey[300],
+                        strokeWidth: 1,
+                        dashArray: [5, 5],
+                      );
+                    },
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          int index = value.toInt();
+                          if (index < 0 || index >= earningsTrend.length) {
+                            return const SizedBox();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              earningsTrend[index].period,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 50,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          );
+                        },
+                        reservedSize: 40,
+                      ),
+                    ),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                      left: BorderSide(color: Colors.grey[300]!, width: 1),
+                    ),
+                  ),
+                  minX: 0,
+                  maxX: earningsTrend.length - 1.0,
+                  minY: 0,
+                  maxY: 300,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: List.generate(
+                        earningsTrend.length,
+                        (index) => FlSpot(index.toDouble(), earningsTrend[index].amount),
+                      ),
+                      isCurved: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.primaryColor.withOpacity(0.8),
+                          theme.primaryColor,
+                        ],
+                      ),
+                      barWidth: 3,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: theme.primaryColor,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            theme.primaryColor.withOpacity(0.3),
+                            theme.primaryColor.withOpacity(0.05),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (LineBarSpot touchedSpot) => theme.colorScheme.surface,
+                      tooltipBorderRadius: BorderRadius.circular(8),
+                      tooltipBorder: BorderSide(
+                        color: theme.primaryColor.withOpacity(0.2),
+                      ),
+                      tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+                        return touchedBarSpots.map((barSpot) {
+                          final index = barSpot.x.toInt();
+                          return LineTooltipItem(
+                            '${earningsTrend[index].period}: ¥${barSpot.y.toStringAsFixed(2)}',
+                            TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -151,6 +378,7 @@ class CreatorEarningsPage extends StatelessWidget {
   Widget _buildEarningsBreakdownCard(BuildContext context) {
     return Card(
       elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -181,6 +409,7 @@ class CreatorEarningsPage extends StatelessWidget {
         final item = planPerformance[index];
         return Card(
             margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 1,
             child: Padding(
               padding: const EdgeInsets.all(12.0),

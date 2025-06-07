@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'dart:ui'; // For ImageFilter
 import 'notification_center_page.dart';
 import '../../../creator/presentation/pages/creator_center_page.dart';
+import '../../../core/services/user_service.dart';
+import '../../../auth/presentation/pages/login_page.dart';
+import 'edit_profile_page.dart';
 
 import '../../../creator/presentation/pages/publish_plan_page.dart';      // 导入发布方案页面
 import '../../../trips/presentation/pages/my_published_plans_page.dart'; // 导入我的已发布方案页面
@@ -22,21 +25,91 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final String _userName = "途乐乐用户"; // 模拟用户名
-  final String _userHandle = "@tulele_explorer"; // 模拟用户Handle
-  final String _userAvatarUrl = 'https://images.unsplash.com/photo-1529665253569-6d01c0eaf7b6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cHJvZmlsZXxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60'; // 示例头像URL
+  final String _defaultUserName = "途乐乐用户"; // 默认用户名
+  final String _defaultUserHandle = "@tulele_explorer"; // 默认用户Handle
+  final String _defaultAvatarUrl = 'https://images.unsplash.com/photo-1529665253569-6d01c0eaf7b6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8cHJvZmlsZXxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60'; // 示例头像URL
+  
+  final _userService = UserService();
+  
+  // 获取当前登录用户，如果未登录返回null
+  get _currentUser => _userService.currentUser;
+  
+  // 判断用户是否已登录
+  bool get _isLoggedIn => _currentUser != null;
+  
+  // 获取用户名，如果未登录则返回默认名称
+  String get _userName => _isLoggedIn ? _currentUser!.username : _defaultUserName;
+  
+  // 获取用户标识，如果未登录则返回默认标识
+  String get _userHandle => _isLoggedIn ? '@${_currentUser!.email.split('@')[0]}' : _defaultUserHandle;
+  
+  // 获取用户头像，如果未登录或用户没有设置头像则返回默认头像
+  String get _userAvatarUrl => _isLoggedIn && _currentUser!.avatarUrl != null ? _currentUser!.avatarUrl! : _defaultAvatarUrl;
 
   @override
   void initState() {
     super.initState();
     // 根据计划书的功能，我们将Tab调整为更符合其内容的分组
     _tabController = TabController(length: 3, vsync: this);
+    
+    // 监听用户状态变化
+    _userService.userStream.listen((user) {
+      if (mounted) {
+        setState(() {
+          // 用户状态变化，更新UI
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+  
+  // 处理登录/登出
+  Future<void> _handleLoginOrLogout() async {
+    if (_isLoggedIn) {
+      // 已登录，执行登出
+      await _userService.logout();
+      if (mounted) {
+        setState(() {});
+      }
+    } else {
+      // 未登录，导航到登录页面
+      final loginResult = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 登录成功，刷新页面
+      if (loginResult == true && mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  // 打开个人资料编辑页面
+  Future<void> _navigateToEditProfile() async {
+    if (!_isLoggedIn) {
+      // 未登录，弹出登录页面
+      await _handleLoginOrLogout();
+      return;
+    }
+    
+    // 已登录，导航到编辑资料页面
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => const EditProfilePage(),
+      ),
+    );
+    
+    // 如果资料更新成功，刷新页面
+    if (result == true && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -69,8 +142,15 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationCenterPage()));
                     },
                   ),
-                  // 可以添加一个设置图标，如果“设置”不在主Tab中
-                  // IconButton(icon: Icon(Icons.settings_outlined, color: onSurfaceColor.withOpacity(0.8)), onPressed: () {})
+                  // 添加登录/登出按钮
+                  IconButton(
+                    icon: Icon(
+                      _isLoggedIn ? Icons.logout : Icons.login,
+                      color: onSurfaceColor.withOpacity(0.8),
+                    ),
+                    tooltip: _isLoggedIn ? '退出登录' : '登录',
+                    onPressed: _handleLoginOrLogout,
+                  ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(
                   collapseMode: CollapseMode.pin, //确保TabBar固定
@@ -90,15 +170,58 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
+                        // 包装头像为可点击的组件，点击后进入编辑资料页面
+                        GestureDetector(
+                          onTap: _navigateToEditProfile,
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
                         CircleAvatar(
                           radius: 48,
                           backgroundColor: primaryColor.withOpacity(0.1),
                           backgroundImage: NetworkImage(_userAvatarUrl),
+                              ),
+                              if (_isLoggedIn)
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12.0),
+                        // 用户名也可点击进入编辑资料页面
+                        GestureDetector(
+                          onTap: _navigateToEditProfile,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                         Text(
                           _userName,
                           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: onSurfaceColor),
+                              ),
+                              if (_isLoggedIn) ...[
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 4.0),
                         Text(
@@ -140,30 +263,32 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   // Tab 1: 我的服务 (订单、票夹、收藏)
   Widget _buildServicesTab(BuildContext context) {
+    // 如果未登录，显示登录提示
+    if (!_isLoggedIn) {
+      return _buildLoginPrompt(context, '登录后查看您的旅行服务');
+    }
+    
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       children: [
-        _buildServiceItemCard(
+        _buildListItem(
             context,
             icon: Icons.list_alt_rounded,
             title: '我的订单',
-            subtitle: '查看您的所有旅行订单',
             color: Colors.orange.shade300,
             onTap: () { /* TODO: Navigate to MyOrdersPage */ }
         ),
-        _buildServiceItemCard(
+        _buildListItem(
             context,
             icon: Icons.confirmation_number_rounded,
             title: '我的票夹',
-            subtitle: '管理您的交通、门票等凭证',
             color: Colors.green.shade300,
             onTap: () { /* TODO: Navigate to MyGlobalTicketsPage */ }
         ),
-        _buildServiceItemCard(
+        _buildListItem(
             context,
             icon: Icons.favorite_rounded,
             title: '我的收藏',
-            subtitle: '查看您收藏的行程方案与地点',
             color: Colors.pink.shade200,
             onTap: () { /* TODO: Navigate to MyFavoritesPage */ }
         ),
@@ -173,6 +298,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   // Tab 2: 创作中心
   Widget _buildCreatorHubTab(BuildContext context) {
+    // 如果未登录，显示登录提示
+    if (!_isLoggedIn) {
+      return _buildLoginPrompt(context, '登录后使用创作中心功能');
+    }
+    
     return SingleChildScrollView( // 使用SingleChildScrollView以防内容过多
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -200,23 +330,17 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5)),
-              foregroundColor: Theme.of(context).primaryColor,
             ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            icon: const Icon(Icons.folder_open_outlined),
-            label: const Text('查看我发布的方案'),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('查看我的已发布方案'),
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPublishedPlansPage()));
             },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              side: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5)),
-              foregroundColor: Theme.of(context).primaryColor,
             ),
           ),
         ],
@@ -226,156 +350,244 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   // Tab 3: 通用设置
   Widget _buildGeneralSettingsTab(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 16.0), // 调整内边距
-      children: [
-        _buildSettingsItem(context, '账号与安全', Icons.shield_outlined, onTap: () { /* TODO */ }),
-        _buildSettingsItem(context, '通知偏好', Icons.notifications_active_outlined, onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationCenterPage()));
-        }),
-        _buildSettingsItem(context, '通用设置', Icons.tune_outlined, onTap: () { /* TODO */ }),
-        const Divider(height: 24, thickness: 0.5),
-        _buildSettingsItem(context, '关于途乐乐', Icons.info_outline, onTap: () { /* TODO */ }),
-        _buildSettingsItem(context, '隐私政策', Icons.privacy_tip_outlined, onTap: () { /* TODO */ }),
-        _buildSettingsItem(context, '帮助与反馈', Icons.help_outline_outlined, onTap: () { /* TODO */ }),
-        const Divider(height: 24, thickness: 0.5),
+    final List<Widget> items = [];
+    
+    if (_isLoggedIn) {
+      items.add(_buildListItem(
+        context,
+        icon: Icons.account_circle_outlined,
+        title: '账号与安全',
+        color: Colors.blue.shade300,
+        onTap: () => _navigateToEditProfile(),
+      ));
+    }
+    
+    items.addAll([
+      _buildListItem(
+        context,
+        icon: Icons.language_outlined,
+        title: '语言设置',
+        color: Colors.teal.shade300,
+        onTap: () { /* TODO: Navigate to LanguageSettingsPage */ },
+      ),
+      _buildListItem(
+        context,
+        icon: Icons.notifications_outlined,
+        title: '通知设置',
+        color: Colors.amber.shade300,
+        onTap: () { /* TODO: Navigate to NotificationSettingsPage */ },
+      ),
+      _buildListItem(
+        context,
+        icon: Icons.help_outline,
+        title: '帮助与反馈',
+        color: Colors.indigo.shade300,
+        onTap: () { /* TODO: Navigate to HelpAndFeedbackPage */ },
+      ),
+      _buildListItem(
+        context,
+        icon: Icons.info_outline,
+        title: '关于途乐乐',
+        color: Colors.cyan.shade300,
+        onTap: () { /* TODO: Navigate to AboutAppPage */ },
+      ),
+    ]);
+    
+    if (_isLoggedIn) {
+      items.add(
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 20.0),
-          child: OutlinedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('退出登录 (模拟)')),
-              );
-            },
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('退出登录', style: TextStyle(color: Colors.red)),
+            onPressed: _handleLoginOrLogout,
             style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.red.shade300),
-                foregroundColor: Colors.red.shade700,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+              side: const BorderSide(color: Colors.red),
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            child: const Text('退出登录', style: TextStyle(fontWeight: FontWeight.w600)),
           ),
-        )
-      ],
+        ),
+      );
+    }
+    
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      children: items,
     );
   }
 
-  // 服务项卡片 (可考虑磨砂玻璃效果)
-  Widget _buildServiceItemCard(BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color, // 用于图标背景或卡片强调色
-    VoidCallback? onTap,
+  // 未登录时显示登录提示
+  Widget _buildLoginPrompt(BuildContext context, String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.account_circle_outlined,
+            size: 80,
+            color: Colors.grey[300],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[500],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: 200,
+            child: ElevatedButton(
+              onPressed: _handleLoginOrLogout,
+              child: const Text('立即登录'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 简约列表项
+  Widget _buildListItem(BuildContext context, {
+    required IconData icon, 
+    required String title, 
+    required Color color, 
+    required VoidCallback onTap
   }) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16, 
+            fontWeight: FontWeight.w500
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right, 
+          color: Colors.grey[400], 
+          size: 22
+        ),
+        onTap: () {
+          // 添加点击的涟漪动画效果
+          _animateListItemTap(context).then((_) => onTap());
+        },
+      ),
+    );
+  }
+  
+  // 点击时的涟漪动画效果
+  Future<void> _animateListItemTap(BuildContext context) async {
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    
+    await controller.forward();
+    await controller.reverse();
+    controller.dispose();
+  }
+
+  Widget _buildGlassNavigationCard(BuildContext context, {required String title, required String subtitle, required IconData icon, required Color color, required VoidCallback onTap}) {
     return Card(
-      elevation: 0.5, // 轻微阴影
-      margin: const EdgeInsets.only(bottom: 16.0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      color: Colors.white, // 卡片背景白色
-      child: InkWell( // 使用InkWell提供点击效果
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12.0),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withOpacity(0.9),
+                color.withOpacity(0.7),
+              ],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: color.withOpacity(0.15),
-                child: Icon(icon, color: color, size: 26),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey[600]), maxLines: 2, overflow: TextOverflow.ellipsis,),
-                  ],
+              Icon(icon, color: Colors.white, size: 36),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
-              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.9),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '立即进入',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.arrow_forward,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  // 磨砂玻璃导航卡片 (用于创作中心入口等)
-  Widget _buildGlassNavigationCard(BuildContext context, {
-    required String title,
-    String? subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 2.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-      clipBehavior: Clip.antiAlias, // 确保内部效果在圆角内
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16.0),
-        child: Container(
-          decoration: BoxDecoration(
-            // 可以用渐变色或者从主题色派生
-              gradient: LinearGradient(
-                colors: [color.withOpacity(0.7), color.withOpacity(0.9)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-          ),
-          child: ClipRRect( // 内部再加一层ClipRRect确保BackdropFilter也在圆角内
-            borderRadius: BorderRadius.circular(16.0),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1), // 非常淡的覆盖色
-                ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 36, color: Colors.white),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                          if (subtitle != null) ...[
-                            const SizedBox(height: 6),
-                            Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.85)), maxLines: 3, overflow: TextOverflow.ellipsis),
-                          ]
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_forward_ios, color: Colors.white.withOpacity(0.7), size: 18),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 设置项列表Tile
-  Widget _buildSettingsItem(BuildContext context, String title, IconData icon, {VoidCallback? onTap}) {
-    return ListTile(
-      leading: Icon(icon, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), size: 24),
-      title: Text(title, style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.85))),
-      trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[350]),
-      onTap: onTap ?? () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$title 功能待开发')),
-        );
-      },
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
     );
   }
 }
