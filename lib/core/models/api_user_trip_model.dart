@@ -108,12 +108,41 @@ class ApiUserTrip {
       // 解析AI生成文本
       List<String> lines = planText.split('\n');
       
-      // 查找目的地
+      // 查找目的地 - 从文本中检测实际目的地，不再硬编码为兰州
+      final List<String> commonDestinations = [
+        '北京', '上海', '广州', '深圳', '成都', '重庆', '西安', '杭州', 
+        '南京', '武汉', '苏州', '天津', '青岛', '大连', '厦门', '三亚'
+      ];
+      
+      // 尝试从文本中查找常见目的地
       for (String line in lines) {
-        if (line.contains('兰州') || line.contains('城市') || line.contains('旅行')) {
-          generatedDestination = '兰州';
-          break;
+        for (String dest in commonDestinations) {
+          if (line.contains(dest)) {
+            generatedDestination = dest;
+            break;
+          }
         }
+        if (generatedDestination.isNotEmpty) break;
+      }
+      
+      // 如果没找到目的地，尝试使用正则表达式
+      if (generatedDestination.isEmpty) {
+        RegExp destRegExp = RegExp(r'([\u4e00-\u9fa5]{2,4})(?:行程|旅游|旅行|之旅)');
+        for (String line in lines) {
+          final match = destRegExp.firstMatch(line);
+          if (match != null && match.groupCount >= 1) {
+            String potentialDest = match.group(1) ?? '';
+            if (potentialDest.isNotEmpty) {
+              generatedDestination = potentialDest;
+              break;
+            }
+          }
+        }
+      }
+      
+      // 如果仍然没有找到目的地，使用默认值
+      if (generatedDestination.isEmpty) {
+        generatedDestination = '未知目的地';
       }
       
       // 提取描述
@@ -660,7 +689,7 @@ class ApiUserTrip {
               
               if (coordinates != null) {
                 activity.coordinates = coordinates;
-                debugPrint('已获取活动[${activity.title}]的经纬度: (${coordinates['latitude']}, ${coordinates['longitude']})');
+                debugPrint('已获取活动[${activity.location}]的经纬度: (${coordinates['latitude']}, ${coordinates['longitude']})');
               }
             }
           }

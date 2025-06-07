@@ -855,7 +855,7 @@ class _AiPlannerPageState extends State<AiPlannerPage> {
     
     // 如果没找到，尝试其他模式
     if (destination.isEmpty) {
-      final commonCities = ['北京', '上海', '广州', '深圳', '兰州', '西安', '成都', '重庆', '三亚'];
+      final commonCities = ['北京', '上海', '广州', '深圳', '成都', '重庆', '西安', '杭州', '南京', '武汉', '兰州', '三亚'];
       for (final city in commonCities) {
         if (messageText.contains(city)) {
           destination = city;
